@@ -2,16 +2,23 @@ import { createClient } from "@supabase/supabase-js";
 import Papa from "papaparse";
 import * as cheerio from "cheerio";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export const dynamic = "force-dynamic";
+
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("Supabase environment variables are required.");
+  }
+  return createClient(url, key);
+}
 
 const BASE_URL =
   "https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/10min/";
 
 export async function GET() {
   try {
+    const supabase = getSupabase();
     // 1. PEGA HTML DA PASTA
     const page = await fetch(BASE_URL);
     const html = await page.text();
