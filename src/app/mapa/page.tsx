@@ -18,7 +18,7 @@ import {
   Clock3,
 } from "lucide-react";
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
 
 const BIOME_COLORS: Record<string, string> = {
   Amazônia: "#10b981",
@@ -140,13 +140,14 @@ export default function MapaPage() {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    if (!MAPBOX_TOKEN) {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) {
       setError("NEXT_PUBLIC_MAPBOX_TOKEN não encontrado");
 
       return;
     }
 
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    mapboxgl.accessToken = token;
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
