@@ -2,10 +2,12 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import RegisterSW from "@/components/RegisterSW";
+import "leaflet/dist/leaflet.css";
 
 export const metadata: Metadata = {
   title: "Território Ipixuna - Monitoramento Territorial",
-  description: "Plataforma PWA de monitoramento ambiental e territorial do Amazonas, conectada a Supabase e Mapbox.",
+  description:
+    "Plataforma PWA de monitoramento ambiental e territorial do Amazonas, conectada a Supabase e Mapbox.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -35,9 +37,7 @@ export default function RootLayout({
       <body>
         <RegisterSW />
         <div className="app-container">
-          <main className="main-content">
-            {children}
-          </main>
+          <main className="main-content">{children}</main>
           <Navbar />
         </div>
       </body>

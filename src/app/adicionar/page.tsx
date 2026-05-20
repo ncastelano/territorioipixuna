@@ -1,29 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { saveReport } from '@/lib/reports';
+import { fetchProfile, getCurrentUser } from '@/lib/profiles';
+import type { ReportCategory, UserProfile } from '@/lib/supabase';
 import { ShieldAlert, Skull, Axe, Flame, Leaf, Eye, ArrowRight, Save, MapPin } from 'lucide-react';
 
-// Dynamically load the MiniMapPicker with SSR disabled
 const MiniMapPicker = dynamic(() => import('@/components/MiniMapPicker'), {
   ssr: false,
   loading: () => (
-    <div style={{
-      height: '200px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'rgba(15, 23, 42, 0.4)',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
-      borderRadius: 'var(--border-radius-sm)',
-      color: 'var(--fg-secondary)',
-      fontSize: '0.8rem'
-    }}>
+    <div className="mini-map-loading">
       Carregando mapa interativo...
     </div>
-  )
+  ),
 });
 
 const CATEGORIES = [
@@ -37,25 +28,46 @@ const CATEGORIES = [
 
 export default function AdicionarReport() {
   const router = useRouter();
-  
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<'invasao' | 'ameaca' | 'desmatamento' | 'queimada' | 'recurso_natural' | 'vigilancia'>('invasao');
-  
-  // Default centered in Tefé/Mamirauá, Amazonas
+  const [category, setCategory] = useState<ReportCategory>('invasao');
   const [latitude, setLatitude] = useState(-3.354);
   const [longitude, setLongitude] = useState(-64.711);
-  
-  const [reporterName, setReporterName] = useState('Agente Ipixuna');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [reporterName, setReporterName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (message: string) => {
     setToastMessage(message);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
+    setTimeout(() => setToastMessage(null), 3000);
   };
+
+  useEffect(() => {
+    async function loadSession() {
+      const user = await getCurrentUser();
+
+      if (!user) {
+        router.push('/entrar?redirect=/adicionar');
+        return;
+      }
+
+      const currentProfile = await fetchProfile(user.id);
+      setUserId(user.id);
+      setProfile(currentProfile);
+      setReporterName(currentProfile?.full_name || user.email || 'Usuário Ipixuna');
+      setIsCheckingSession(false);
+    }
+
+    loadSession().catch((error) => {
+      console.error(error);
+      showToast('Não foi possível carregar sua sessão.');
+      setIsCheckingSession(false);
+    });
+  }, [router]);
 
   const handleCoordinateChange = (lat: number, lng: number) => {
     setLatitude(parseFloat(lat.toFixed(6)));
@@ -64,6 +76,12 @@ export default function AdicionarReport() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!userId) {
+      router.push('/entrar?redirect=/adicionar');
+      return;
+    }
+
     if (!title.trim() || !description.trim()) {
       showToast('Por favor, preencha todos os campos obrigatórios.');
       return;
@@ -72,17 +90,17 @@ export default function AdicionarReport() {
     setIsSubmitting(true);
     try {
       await saveReport({
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         category,
         latitude,
         longitude,
-        reporter_name: reporterName || 'Anônimo',
+        reporter_name: reporterName.trim() || profile?.full_name || 'Anônimo',
+        user_id: userId,
       });
-      
+
       showToast('Marcação adicionada com sucesso!');
-      
-      // Redirect after toast hides
+
       setTimeout(() => {
         router.push('/');
       }, 1500);
@@ -93,13 +111,20 @@ export default function AdicionarReport() {
     }
   };
 
+  if (isCheckingSession) {
+    return (
+      <div className="page-wrapper">
+        <div className="glass-card">Carregando sua sessão...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-wrapper">
       <h1 className="page-title">Nova Marcação</h1>
       <p className="page-subtitle">Adicione um novo registro ou ocorrência de monitoramento no território do Amazonas.</p>
 
       <form onSubmit={handleSubmit}>
-        {/* Category selector */}
         <div className="form-group">
           <label className="form-label">Categoria de Ocorrência</label>
           <div className="category-selector">
@@ -122,14 +147,13 @@ export default function AdicionarReport() {
           </div>
         </div>
 
-        {/* Title */}
         <div className="form-group">
           <label className="form-label" htmlFor="title">Título da Marcação *</label>
           <input
             id="title"
             type="text"
             className="form-input"
-            placeholder="Ex: Foco de Incêndio Próximo a Comunidade"
+            placeholder="Ex: foco de incêndio próximo à comunidade"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -137,7 +161,6 @@ export default function AdicionarReport() {
           />
         </div>
 
-        {/* Description */}
         <div className="form-group">
           <label className="form-label" htmlFor="description">Descrição / Detalhes *</label>
           <textarea
@@ -151,13 +174,12 @@ export default function AdicionarReport() {
           />
         </div>
 
-        {/* Coordinate Selection */}
         <div className="form-group">
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <MapPin size={16} />
             <span>Localização no Mapa (Amazonas)</span>
           </label>
-          
+
           <MiniMapPicker
             latitude={latitude}
             longitude={longitude}
@@ -195,14 +217,13 @@ export default function AdicionarReport() {
           </div>
         </div>
 
-        {/* Reporter Name */}
         <div className="form-group">
           <label className="form-label" htmlFor="reporter">Nome do Relator</label>
           <input
             id="reporter"
             type="text"
             className="form-input"
-            placeholder="Seu nome ou organização (deixe 'Agente Ipixuna' se preferir)"
+            placeholder="Seu nome ou organização"
             value={reporterName}
             onChange={(e) => setReporterName(e.target.value)}
             disabled={isSubmitting}
@@ -222,7 +243,6 @@ export default function AdicionarReport() {
         </button>
       </form>
 
-      {/* Toast popup */}
       {toastMessage && (
         <div className="toast">
           <span>{toastMessage}</span>

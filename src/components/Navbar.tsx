@@ -2,10 +2,56 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, PlusCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { fetchProfile, getCurrentUser } from '@/lib/profiles';
+import { Home, PlusCircle, UserRound, Map } from 'lucide-react';
+
+function getInitials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join('') || 'IP';
+}
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [displayName, setDisplayName] = useState('Perfil');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfilePreview() {
+      const user = await getCurrentUser();
+
+      if (!user || !isMounted) {
+        setAvatarUrl('');
+        setDisplayName('Entrar');
+        return;
+      }
+
+      const profile = await fetchProfile(user.id);
+
+      if (!isMounted) {
+        return;
+      }
+
+      setAvatarUrl(profile?.image_url || '');
+      setDisplayName(profile?.full_name || user.email || 'Perfil');
+    }
+
+    loadProfilePreview().catch(() => {
+      if (isMounted) {
+        setAvatarUrl('');
+        setDisplayName('Perfil');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [pathname]);
+
+  const profilePath = displayName === 'Entrar' ? '/entrar' : '/perfil';
+  const isProfileActive = pathname === '/perfil' || pathname === '/entrar' || pathname === '/cadastrar';
 
   return (
     <nav className="navbar">
@@ -16,6 +62,13 @@ export default function Navbar() {
         <span>Início</span>
       </Link>
 
+      <Link href="/mapa" className={`nav-link ${pathname === '/mapa' ? 'active' : ''}`}>
+        <div className="nav-icon-container">
+          <Map size={24} />
+        </div>
+        <span>Mapa</span>
+      </Link>
+
       <Link href="/adicionar" className={`nav-link ${pathname === '/adicionar' ? 'active' : ''}`}>
         <div className="nav-icon-container">
           <PlusCircle size={24} />
@@ -23,19 +76,17 @@ export default function Navbar() {
         <span>Adicionar</span>
       </Link>
 
-      <Link href="/perfil" className={`nav-link ${pathname === '/perfil' ? 'active' : ''}`}>
+      <Link href={profilePath} className={`nav-link ${isProfileActive ? 'active' : ''}`}>
         <div className="nav-icon-container">
-          <img 
-            src="/avatar.png" 
-            alt="Foto do Usuário" 
-            className="nav-avatar"
-            onError={(e) => {
-              // Fallback if image fails to load
-              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop';
-            }}
-          />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={`Foto de ${displayName}`} className="nav-avatar" />
+          ) : displayName === 'Entrar' ? (
+            <UserRound size={24} />
+          ) : (
+            <span className="nav-avatar nav-avatar-initials">{getInitials(displayName)}</span>
+          )}
         </div>
-        <span>Perfil</span>
+        <span>{displayName === 'Entrar' ? 'Entrar' : 'Perfil'}</span>
       </Link>
     </nav>
   );

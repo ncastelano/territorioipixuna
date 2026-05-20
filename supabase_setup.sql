@@ -17,14 +17,16 @@ create table if not exists public.reports (
 alter table public.reports enable row level security;
 
 -- 3. Criar políticas de segurança para acesso público (leitura e escrita anônimas)
-create policy "Allow public read access" 
-on public.reports 
-for select 
+drop policy if exists "Allow public read access" on public.reports;
+create policy "Allow public read access"
+on public.reports
+for select
 using (true);
 
-create policy "Allow public insert access" 
-on public.reports 
-for insert 
+drop policy if exists "Allow public insert access" on public.reports;
+create policy "Allow public insert access"
+on public.reports
+for insert
 with check (true);
 
 -- 4. Inserir dados mockados iniciais (opcional, caso queira preencher o Supabase de início)

@@ -1,91 +1,64 @@
-import { supabase, MarkerReport } from './supabase';
-import { MOCK_REPORTS } from './mockData';
+import { getSupabaseClient, MarkerReport } from './supabase';
 
-const LOCAL_STORAGE_KEY = 'ipixuna_local_reports';
+const REPORTS_PAGE_SIZE = 1000;
 
 export async function fetchReports(): Promise<MarkerReport[]> {
-  let dbReports: MarkerReport[] = [];
-  try {
+  const supabase = getSupabaseClient();
+  const reports: MarkerReport[] = [];
+  let page = 0;
+
+  while (true) {
+    const from = page * REPORTS_PAGE_SIZE;
+    const to = from + REPORTS_PAGE_SIZE - 1;
+
     const { data, error } = await supabase
       .from('reports')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (error) {
-      console.warn("Erro ao ler Supabase. Usando armazenamento local/mock.", error.message);
-    } else if (data && data.length > 0) {
-      dbReports = data as MarkerReport[];
+      console.error('Erro ao buscar reports no Supabase:', error.message);
+      return reports;
     }
-  } catch (err) {
-    console.warn("Falha de conexão com Supabase. Usando fallback.", err);
-  }
 
-  // Get local reports from localStorage (added by user offline or without Supabase table setup)
-  let localReports: MarkerReport[] = [];
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (stored) {
-        localReports = JSON.parse(stored);
-      }
-    } catch (e) {
-      console.error("Erro ao ler localStorage:", e);
+    reports.push(...((data ?? []) as MarkerReport[]));
+
+    if (!data || data.length < REPORTS_PAGE_SIZE) {
+      return reports;
     }
+
+    page += 1;
+  }
+}
+
+export async function fetchReportsByUser(userId: string): Promise<MarkerReport[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('reports')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Erro ao buscar reports do usuário no Supabase:', error.message);
+    return [];
   }
 
-  // Combine database reports, local reports, and mock reports
-  const allReports = [...dbReports, ...localReports];
-  
-  // If we have nothing, seed with MOCK_REPORTS
-  if (allReports.length === 0) {
-    return MOCK_REPORTS;
-  }
-
-  // Return unique reports by ID
-  const uniqueReportsMap = new Map<string, MarkerReport>();
-  MOCK_REPORTS.forEach(r => uniqueReportsMap.set(r.id, r));
-  allReports.forEach(r => uniqueReportsMap.set(r.id, r));
-
-  return Array.from(uniqueReportsMap.values());
+  return (data ?? []) as MarkerReport[];
 }
 
 export async function saveReport(report: Omit<MarkerReport, 'id' | 'created_at'>): Promise<MarkerReport> {
-  const newReport: MarkerReport = {
-    ...report,
-    id: typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
-    created_at: new Date().toISOString(),
-  };
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('reports')
+    .insert([report])
+    .select()
+    .single();
 
-  // Try saving to Supabase
-  let savedToSupabase = false;
-  try {
-    const { data, error } = await supabase
-      .from('reports')
-      .insert([newReport])
-      .select();
-
-    if (!error && data && data.length > 0) {
-      console.log("Salvo no Supabase com sucesso!");
-      savedToSupabase = true;
-      return data[0] as MarkerReport;
-    } else {
-      console.warn("Erro ao salvar no Supabase, salvando localmente:", error?.message);
-    }
-  } catch (err) {
-    console.warn("Falha de rede ao conectar com Supabase, salvando localmente:", err);
+  if (error) {
+    throw new Error(`Erro ao salvar report no Supabase: ${error.message}`);
   }
 
-  // Fallback: save to localStorage if Supabase fails
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      const reports = stored ? JSON.parse(stored) : [];
-      reports.unshift(newReport);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reports));
-    } catch (e) {
-      console.error("Erro ao salvar no localStorage:", e);
-    }
-  }
-
-  return newReport;
+  return data as MarkerReport;
 }
