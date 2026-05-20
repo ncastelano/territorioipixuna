@@ -26,69 +26,205 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#080c14] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* BACKGROUND GLOWS */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute left-[-10%] top-[-10%] h-[350px] w-[350px] rounded-full bg-red-500/10 blur-[100px]" />
-        <div className="absolute right-[-10%] bottom-[-10%] h-[350px] w-[350px] rounded-full bg-orange-500/10 blur-[100px]" />
-      </div>
+    <main
+      style={{
+        width: "100%",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#000",
+        position: "relative",
+        overflow: "hidden",
+        color: "#fff",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+      }}
+    >
+      {/* BACKGROUND AMBIENT GLOW */}
+      <div
+        style={{
+          position: "absolute",
+          top: "40%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 400,
+          height: 400,
+          borderRadius: "999px",
+          background: "rgba(239, 85, 0, 0.12)",
+          filter: "blur(120px)",
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      />
 
-      <div className="relative z-10 w-full max-w-md flex flex-col gap-6">
-        {/* HERO LOGO / BRANDING */}
-        <div className="text-center flex flex-col items-center gap-3">
-          <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/10 px-4 py-2">
-            <Sparkles size={14} className="text-orange-400" />
-            <span className="text-[11px] font-bold uppercase tracking-[2px] text-orange-300">
-              Território Ipixuna
-            </span>
+      {/* CENTRAL CARD */}
+      <div
+        style={{
+          width: "90%",
+          maxWidth: 450,
+          background: "rgba(0, 0, 0, 0.55)",
+          backdropFilter: "blur(20px)",
+          border: "1px solid rgba(255, 255, 255, 0.12)",
+          borderRadius: 28,
+          padding: "48px 36px",
+          textAlign: "center",
+          boxShadow: "0 25px 60px -12px rgba(0, 0, 0, 0.75), 0 0 50px rgba(239, 68, 68, 0.08)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 32,
+          position: "relative",
+          zIndex: 10,
+        }}
+      >
+        {/* BRAND BADGE */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            borderRadius: 999,
+            padding: "8px 16px",
+            border: "1px solid rgba(239, 85, 0, 0.25)",
+            background: "rgba(239, 85, 0, 0.08)",
+            color: "#ff9955",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "2px",
+            textTransform: "uppercase",
+          }}
+        >
+          <Sparkles size={13} color="#ff9955" />
+          <span>Território Ipixuna</span>
+        </div>
+
+        {/* FIRE GLOW ICON */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 96,
+            height: 96,
+          }}
+        >
+          {/* Outer Pulsing Effect */}
+          <div
+            style={{
+              position: "absolute",
+              inset: -8,
+              borderRadius: "999px",
+              background: "rgba(239, 68, 68, 0.2)",
+              filter: "blur(18px)",
+              animation: "pulse 2s infinite ease-in-out",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              background: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.25)",
+              borderRadius: "999px",
+              padding: 22,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Flame
+              size={40}
+              color="#ef4444"
+              style={{ filter: "drop-shadow(0 0 10px rgba(239, 68, 68, 0.5))" }}
+            />
           </div>
         </div>
 
-        {/* GLOWING STAT CARD */}
-        <div className="glass-card overflow-hidden rounded-[36px] border border-white/10 p-8 flex flex-col items-center text-center relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 via-transparent to-orange-500/5" />
-          
-          <div className="relative z-10 flex flex-col items-center gap-6 w-full">
-            {/* ICON & COUNTER */}
-            <div className="relative flex items-center justify-center">
-              {/* Outer Pulsing Aura */}
-              <div className="absolute inset-0 rounded-full bg-red-500/20 blur-xl animate-pulse w-24 h-24" />
-              
-              <div className="relative bg-red-500/10 border border-red-500/30 rounded-full p-6 text-red-500 animate-pulse">
-                <Flame size={48} className="drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]" />
-              </div>
+        {/* COUNTER */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+          {loading ? (
+            <div style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Loader2 className="animate-spin" size={36} color="#ef4444" />
             </div>
-
-            {/* MAIN STAT */}
-            <div className="flex flex-col items-center">
-              {loading ? (
-                <div className="h-20 flex items-center justify-center">
-                  <Loader2 className="animate-spin text-orange-500" size={36} />
-                </div>
-              ) : (
-                <span className="text-7xl font-black tracking-tighter bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-transparent drop-shadow-[0_4px_12px_rgba(239,68,68,0.2)]">
-                  {focosCount ?? 0}
-                </span>
-              )}
-              <h2 className="text-xl font-bold mt-2">Focos Ativos Detectados</h2>
-            </div>
-
-            {/* DESCRIPTION */}
-            <p className="text-[15px] leading-relaxed text-slate-400 px-2">
-              Atualmente existem estes números de focos de queimadas detectados hoje no Brasil.
-            </p>
-
-            {/* BUTTON LINK TO MAP */}
-            <Link
-              href="/mapa"
-              className="mt-4 w-full flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-orange-500 to-red-600 px-6 py-4 text-sm font-bold text-white shadow-[0_8px_30px_rgba(239,68,68,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98]"
+          ) : (
+            <span
+              style={{
+                fontSize: 80,
+                fontWeight: 900,
+                letterSpacing: "-2px",
+                lineHeight: 1,
+                background: "linear-gradient(135deg, #ff8833 0%, #ef4444 50%, #dc2626 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                filter: "drop-shadow(0 4px 15px rgba(239, 68, 68, 0.35))",
+              }}
             >
-              <Map size={18} />
-              Visualizar no Mapa
-              <ChevronRight size={16} />
-            </Link>
-          </div>
+              {focosCount ?? 0}
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: "rgba(255, 255, 255, 0.45)",
+              textTransform: "uppercase",
+              letterSpacing: "1px",
+              marginTop: 6,
+            }}
+          >
+            Focos Ativos Detectados
+          </span>
         </div>
+
+        {/* DESCRIPTION TEXT */}
+        <p
+          style={{
+            fontSize: 15,
+            lineHeight: "1.6",
+            color: "rgba(255, 255, 255, 0.75)",
+            margin: 0,
+            padding: "0 8px",
+            fontWeight: 500,
+          }}
+        >
+          Atualmente existem estes números de focos de queimadas detectados hoje no Brasil.
+        </p>
+
+        {/* ACTION BUTTON (MATCHES MAP PAGE HEADER CONTROLS) */}
+        <Link
+          href="/mapa"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            width: "100%",
+            borderRadius: 18,
+            padding: "16px 24px",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            background: "rgba(255, 255, 255, 0.06)",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: "pointer",
+            transition: "all 0.2s ease-in-out",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
+            textDecoration: "none",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(255, 255, 255, 0.12)";
+            e.currentTarget.style.transform = "translateY(-1px)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+            e.currentTarget.style.transform = "translateY(0)";
+          }}
+        >
+          <Map size={18} color="#ef4444" />
+          <span>Visualizar no Mapa</span>
+          <ChevronRight size={16} color="rgba(255, 255, 255, 0.4)" />
+        </Link>
       </div>
     </main>
   );
