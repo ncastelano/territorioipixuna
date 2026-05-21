@@ -23,7 +23,8 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
         lat: marker.lat,
         media_url: marker.mediaUrl,
         media_type: marker.mediaType,
-        visibility: marker.visibility || "public", // novo campo
+        group_tag: marker.groupTag === "public" ? null : marker.groupTag,
+        group_password_hash: marker.groupPasswordHash || null,
       });
 
       if (error) {
@@ -184,18 +185,30 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
                     >
                       {item.title}
                     </div>
-                    {item.visibility && (
+                    {item.groupTag && item.groupTag !== "public" && (
                       <div
                         style={{
                           fontSize: 11,
                           padding: "2px 8px",
                           borderRadius: 20,
-                          background: "rgba(0,0,0,0.3)",
+                          background: "rgba(139,92,246,0.2)",
+                          color: "#a78bfa",
                         }}
                       >
-                        {item.visibility === "public" && "🌍 Público"}
-                        {item.visibility === "private" && "🔒 Privado"}
-                        {item.visibility === "team" && "👥 Equipe"}
+                        🔒 {item.groupTag}
+                      </div>
+                    )}
+                    {item.groupTag === "public" && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 20,
+                          background: "rgba(16,185,129,0.2)",
+                          color: "#10b981",
+                        }}
+                      >
+                        🌍 Público
                       </div>
                     )}
                   </div>
