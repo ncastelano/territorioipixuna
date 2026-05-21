@@ -1,3 +1,4 @@
+// components/AddLocationModal.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import type { MarkerType } from "../types/marker";
 import { getCurrentUser } from "@/lib/profiles";
+import { getSupabaseClient } from "@/lib/supabase";
 
 type Props = {
   lng: number;
@@ -28,11 +30,17 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
   const [locationName, setLocationName] = useState("Buscando localização...");
   const [loadingLocation, setLoadingLocation] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [visibility, setVisibility] = useState<"public" | "private" | "team">(
-    "public"
-  );
-  const [teamPassword, setTeamPassword] = useState("");
-  const [confirmTeamPassword, setConfirmTeamPassword] = useState("");
+  const [groupTag, setGroupTag] = useState("");
+  const [groupPassword, setGroupPassword] = useState("");
+  const [confirmGroupPassword, setConfirmGroupPassword] = useState("");
+  const [existingGroups, setExistingGroups] = useState<string[]>([]);
+  const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [selectedGroupInfo, setSelectedGroupInfo] = useState<{
+    hasPassword: boolean;
+    groupTag: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // PREVIEW
@@ -67,6 +75,71 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     fetchLocationName();
   }, [lng, lat]);
 
+  // Buscar grupos existentes (distinct)
+  const fetchExistingGroups = async (search: string) => {
+    if (!search.trim()) {
+      setExistingGroups([]);
+      return;
+    }
+    setLoadingGroups(true);
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("locations")
+      .select("group_tag")
+      .not("group_tag", "is", null)
+      .neq("group_tag", "public")
+      .ilike("group_tag", `%${search}%`)
+      .limit(10);
+    if (!error && data) {
+      const tags = [
+        ...new Set(data.map((item: any) => item.group_tag).filter(Boolean)),
+      ];
+      setExistingGroups(tags);
+    } else {
+      setExistingGroups([]);
+    }
+    setLoadingGroups(false);
+  };
+
+  // Debounce para busca
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm !== groupTag) {
+        fetchExistingGroups(searchTerm);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const handleGroupInputChange = (value: string) => {
+    setGroupTag(value);
+    setSearchTerm(value);
+    setShowGroupSuggestions(true);
+    setSelectedGroupInfo(null);
+    // Limpar senha se mudar de grupo
+    setGroupPassword("");
+    setConfirmGroupPassword("");
+  };
+
+  const selectExistingGroup = async (tag: string) => {
+    setGroupTag(tag);
+    setSearchTerm(tag);
+    setShowGroupSuggestions(false);
+    // Verificar se o grupo tem senha
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("locations")
+      .select("group_password_hash")
+      .eq("group_tag", tag)
+      .not("group_password_hash", "is", null)
+      .limit(1);
+    if (!error && data && data.length > 0 && data[0].group_password_hash) {
+      setSelectedGroupInfo({ hasPassword: true, groupTag: tag });
+    } else {
+      setSelectedGroupInfo({ hasPassword: false, groupTag: tag });
+    }
+  };
+
   const acceptType = useMemo(
     () => (mediaType === "photo" ? "image/*" : "video/*"),
     [mediaType]
@@ -93,20 +166,51 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
       setSaving(true);
       let mediaUrl = "";
       if (mediaFile) mediaUrl = await fileToBase64(mediaFile);
-
       const user = await getCurrentUser();
 
+      let finalGroupTag = groupTag.trim();
+      if (finalGroupTag === "") finalGroupTag = "public";
+      if (finalGroupTag.length > 30) finalGroupTag = finalGroupTag.slice(0, 30);
+
       let passwordHash = "";
-      if (visibility === "team" && teamPassword) {
-        if (teamPassword !== confirmTeamPassword) {
+      // Se é um grupo existente com senha, validar a senha fornecida
+      if (selectedGroupInfo && selectedGroupInfo.hasPassword) {
+        if (!groupPassword) {
+          alert("Este grupo requer senha para adicionar locais.");
+          return;
+        }
+        // Verificar se a senha está correta (consultar hash do grupo)
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase
+          .from("locations")
+          .select("group_password_hash")
+          .eq("group_tag", finalGroupTag)
+          .not("group_password_hash", "is", null)
+          .limit(1);
+        if (!error && data && data.length > 0) {
+          const storedHash = data[0].group_password_hash;
+          const inputHash = await hashPassword(groupPassword);
+          if (inputHash !== storedHash) {
+            alert("Senha do grupo incorreta.");
+            return;
+          }
+          // Senha correta: não precisa salvar hash novamente (já existe)
+          passwordHash = storedHash; // ou vazio, pois já existe no banco
+        } else {
+          alert("Erro ao verificar senha do grupo.");
+          return;
+        }
+      } else if (finalGroupTag !== "public" && groupPassword) {
+        // Novo grupo com senha
+        if (groupPassword !== confirmGroupPassword) {
           alert("As senhas não coincidem.");
           return;
         }
-        if (teamPassword.length < 4) {
+        if (groupPassword.length < 4) {
           alert("A senha deve ter pelo menos 4 caracteres.");
           return;
         }
-        passwordHash = await hashPassword(teamPassword);
+        passwordHash = await hashPassword(groupPassword);
       }
 
       const newMarker: MarkerType = {
@@ -122,9 +226,12 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
         synced: false,
         userId: user?.id,
         userEmail: user?.email,
-        visibility,
-        teamPasswordHash: passwordHash || undefined,
-        teamPassword: visibility === "team" ? teamPassword : undefined,
+        groupTag: finalGroupTag,
+        groupPasswordHash: passwordHash || undefined,
+        groupPassword:
+          finalGroupTag !== "public" && groupPassword
+            ? groupPassword
+            : undefined,
       };
 
       const existing = localStorage.getItem("territorio-markers");
@@ -439,91 +546,127 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           />
         </div>
 
-        {/* Visibilidade */}
+        {/* Grupo personalizado com busca */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ marginBottom: 12, color: "#fff", fontWeight: 600 }}>
-            Quem pode ver este local?
+            Grupo (opcional)
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 20,
-              flexWrap: "wrap",
-              alignItems: "center",
-              marginBottom: 12,
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="radio"
-                name="visibility"
-                value="public"
-                checked={visibility === "public"}
-                onChange={() => setVisibility("public")}
-              />
-              <span>🌍 Público (todos)</span>
-            </label>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="radio"
-                name="visibility"
-                value="private"
-                checked={visibility === "private"}
-                onChange={() => setVisibility("private")}
-              />
-              <span>🔒 Privado (só eu)</span>
-            </label>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="radio"
-                name="visibility"
-                value="team"
-                checked={visibility === "team"}
-                onChange={() => setVisibility("team")}
-              />
-              <span>👥 Equipe (membros aprovados)</span>
-            </label>
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="Digite o nome do grupo (ou busque existentes)"
+              value={groupTag}
+              onChange={(e) => handleGroupInputChange(e.target.value)}
+              onFocus={() => setShowGroupSuggestions(true)}
+              style={inputStyle}
+            />
+            {showGroupSuggestions &&
+              (searchTerm.length > 0 || existingGroups.length > 0) && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    background: "rgba(20,20,25,0.95)",
+                    backdropFilter: "blur(8px)",
+                    borderRadius: 20,
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    zIndex: 10,
+                    marginTop: 4,
+                  }}
+                >
+                  {loadingGroups && (
+                    <div style={{ padding: 8, color: "#aaa" }}>Buscando...</div>
+                  )}
+                  {!loadingGroups &&
+                    existingGroups.length === 0 &&
+                    searchTerm.length > 0 && (
+                      <div style={{ padding: 8, color: "#aaa" }}>
+                        Nenhum grupo encontrado. Você pode criar um novo.
+                      </div>
+                    )}
+                  {existingGroups.map((tag) => (
+                    <div
+                      key={tag}
+                      onClick={() => selectExistingGroup(tag)}
+                      style={{
+                        padding: "10px 16px",
+                        cursor: "pointer",
+                        borderBottom: "1px solid rgba(255,255,255,0.05)",
+                        color: "#fff",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background =
+                          "rgba(255,255,255,0.1)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      {tag}
+                    </div>
+                  ))}
+                </div>
+              )}
           </div>
 
-          {visibility === "team" && (
+          {/* Se for um grupo existente com senha, pedir a senha */}
+          {selectedGroupInfo && selectedGroupInfo.hasPassword && (
             <div style={{ marginTop: 12 }}>
               <input
                 type="password"
-                placeholder="Senha da equipe (mínimo 4 caracteres)"
-                value={teamPassword}
-                onChange={(e) => setTeamPassword(e.target.value)}
+                placeholder="Senha do grupo (necessária para adicionar ao grupo)"
+                value={groupPassword}
+                onChange={(e) => setGroupPassword(e.target.value)}
+                style={{ ...inputStyle, marginBottom: 8 }}
+              />
+            </div>
+          )}
+
+          {/* Se for um novo grupo (não encontrado) e não for público, opção de criar com senha */}
+          {groupTag && groupTag !== "public" && !selectedGroupInfo && (
+            <div style={{ marginTop: 12 }}>
+              <input
+                type="password"
+                placeholder="Senha do grupo (opcional, mínimo 4 caracteres)"
+                value={groupPassword}
+                onChange={(e) => setGroupPassword(e.target.value)}
                 style={{ ...inputStyle, marginBottom: 8 }}
               />
               <input
                 type="password"
                 placeholder="Confirmar senha"
-                value={confirmTeamPassword}
-                onChange={(e) => setConfirmTeamPassword(e.target.value)}
+                value={confirmGroupPassword}
+                onChange={(e) => setConfirmGroupPassword(e.target.value)}
                 style={inputStyle}
               />
             </div>
           )}
+
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.5)",
+              marginTop: 6,
+            }}
+          >
+            {!groupTag &&
+              "Se você não escolher um grupo, o local será público."}
+            {groupTag === "public" && "Grupo público (qualquer pessoa vê)."}
+            {groupTag &&
+              groupTag !== "public" &&
+              !selectedGroupInfo &&
+              "Novo grupo. Se definir senha, será necessário para adicionar mais locais."}
+            {selectedGroupInfo &&
+              selectedGroupInfo.hasPassword &&
+              "Grupo protegido por senha."}
+            {selectedGroupInfo &&
+              !selectedGroupInfo.hasPassword &&
+              "Grupo aberto (sem senha)."}
+          </div>
         </div>
 
         {/* Botões */}

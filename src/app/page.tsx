@@ -1,4 +1,4 @@
-// app/page.tsx (versão completa com equipe + senha)
+// app/page.tsx
 
 "use client";
 
@@ -15,6 +15,8 @@ import {
   MinusIcon,
   MapPin,
   Globe,
+  Search,
+  X,
 } from "lucide-react";
 import { MarkerType } from "@/types/marker";
 import AddLocationModal from "@/components/AddLocationModal";
@@ -34,11 +36,14 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [markers, setMarkers] = useState<MarkerType[]>([]);
   const [publicMarkers, setPublicMarkers] = useState<MarkerType[]>([]);
-  const [teamMarkers, setTeamMarkers] = useState<MarkerType[]>([]);
-  const [revealedTeamIds, setRevealedTeamIds] = useState<Set<string>>(
+  const [groupMarkers, setGroupMarkers] = useState<MarkerType[]>([]);
+  const [revealedGroupIds, setRevealedGroupIds] = useState<Set<string>>(
     new Set()
   );
-  const [showPublic, setShowPublic] = useState(false);
+  const [showExplorer, setShowExplorer] = useState(false);
+  const [searchGroup, setSearchGroup] = useState("");
+  const [searchPassword, setSearchPassword] = useState("");
+  const [loadingGroup, setLoadingGroup] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLocationsDialog, setShowLocationsDialog] = useState(false);
@@ -109,17 +114,16 @@ export default function Home() {
     }
   }, []);
 
-  // ======================== RENDER LOCAIS LOCAIS E PÚBLICOS REVELADOS ========================
+  // RENDER LOCAIS LOCAIS + PÚBLICOS + GRUPOS REVELADOS
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
 
-    // Locais do usuário + públicos + equipes já reveladas
     const allMarkers = [
       ...markers,
       ...publicMarkers,
-      ...teamMarkers.filter((t) => revealedTeamIds.has(t.id)),
+      ...groupMarkers.filter((g) => revealedGroupIds.has(g.id)),
     ];
 
     allMarkers.forEach((item) => {
@@ -169,20 +173,18 @@ export default function Home() {
 
       markersRef.current.push(marker);
     });
-  }, [markers, publicMarkers, teamMarkers, revealedTeamIds, mapLoaded]);
+  }, [markers, publicMarkers, groupMarkers, revealedGroupIds, mapLoaded]);
 
-  // ======================== RENDER PINS DE EQUIPE NÃO REVELADOS (CADEADO) ========================
+  // RENDER PINS DE GRUPOS NÃO REVELADOS (CADEADO)
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
-
-    teamMarkers.forEach((item) => {
-      if (revealedTeamIds.has(item.id)) return; // já revelado, será renderizado no outro useEffect
-
+    groupMarkers.forEach((item) => {
+      if (revealedGroupIds.has(item.id)) return;
       const el = document.createElement("div");
       el.style.width = "36px";
       el.style.height = "36px";
       el.style.borderRadius = "999px";
-      el.style.border = "3px solid #8b5cf6"; // roxo para equipe
+      el.style.border = "3px solid #8b5cf6";
       el.style.boxShadow = "0 0 12px rgba(139,92,246,0.8)";
       el.style.background = "#fff";
       el.style.display = "flex";
@@ -197,59 +199,59 @@ export default function Home() {
         .addTo(mapRef.current!);
 
       el.addEventListener("click", async () => {
-        const password = prompt(
-          "Digite a senha para acessar este local da equipe:"
-        );
+        const groupTag = item.groupTag;
+        let password =
+          prompt(`Digite a senha para o grupo "${groupTag}":`) || "";
         if (!password) return;
-
-        try {
-          const res = await fetch("/api/verify-team-location", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ locationId: item.id, password }),
-          });
-          const { success } = await res.json();
-
-          if (success) {
-            setRevealedTeamIds((prev) => new Set(prev).add(item.id));
-            marker.remove();
-          } else {
-            alert("Senha incorreta.");
-          }
-        } catch (err) {
-          console.error(err);
-          alert("Erro ao verificar senha.");
+        const encoder = new TextEncoder();
+        const hashBuffer = await crypto.subtle.digest(
+          "SHA-256",
+          encoder.encode(password)
+        );
+        const hashHex = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        if (hashHex !== item.groupPasswordHash) {
+          alert("Senha incorreta.");
+          return;
         }
+        setRevealedGroupIds((prev) => new Set(prev).add(item.id));
+        marker.remove();
       });
-
       markersRef.current.push(marker);
     });
-  }, [teamMarkers, revealedTeamIds, mapLoaded]);
+  }, [groupMarkers, revealedGroupIds, mapLoaded]);
 
-  // ======================== CARREGAR LOCAIS PÚBLICOS E DE EQUIPE DO SUPABASE ========================
-  const loadPublicMarkers = async () => {
+  // CARREGAR LOCAIS POR GRUPO (com suporte a senha)
+  const loadMarkersByGroup = async (groupTag: string, password?: string) => {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("locations")
-      .select("*")
-      .in("visibility", ["public", "team"])
-      .order("created_at", { ascending: false });
+    let query = supabase.from("locations").select("*");
+
+    if (groupTag === "public" || groupTag === "") {
+      query = query.or("group_tag.is.null,group_tag.eq.public");
+    } else {
+      query = query.eq("group_tag", groupTag);
+    }
+
+    const { data, error } = await query.order("created_at", {
+      ascending: false,
+    });
 
     if (error) {
       console.error(error);
-      alert("Erro ao carregar locais públicos.");
-      return { publicMarkers: [], teamMarkers: [] };
+      alert("Erro ao carregar locais.");
+      return { publicMarkers: [], groupMarkers: [] };
     }
 
     const publicM: MarkerType[] = [];
-    const teamM: MarkerType[] = [];
+    const groupM: MarkerType[] = [];
 
     (data || []).forEach((loc: any) => {
       const marker: MarkerType = {
         id: loc.id,
         lng: loc.lng,
         lat: loc.lat,
-        title: loc.title || "Local público",
+        title: loc.title || "Local",
         description: loc.description || "",
         mediaType: loc.media_type === "video" ? "video" : "photo",
         mediaUrl: loc.media_url || "",
@@ -258,29 +260,66 @@ export default function Home() {
         synced: true,
         userId: undefined,
         userEmail: undefined,
-        visibility: loc.visibility || "public",
-        teamPasswordHash: loc.team_password_hash,
+        groupTag: loc.group_tag,
+        groupPasswordHash: loc.group_password_hash,
       };
 
-      if (loc.visibility === "public") publicM.push(marker);
-      else if (loc.visibility === "team") teamM.push(marker);
+      if (loc.group_tag === "public" || !loc.group_tag) {
+        publicM.push(marker);
+      } else {
+        groupM.push(marker);
+      }
     });
 
-    return { publicMarkers: publicM, teamMarkers: teamM };
+    // Se for um grupo não-público e houver senha, validar
+    if (
+      groupTag !== "public" &&
+      groupTag !== "" &&
+      groupM.length > 0 &&
+      groupM[0].groupPasswordHash
+    ) {
+      if (!password) {
+        alert("Este grupo requer senha.");
+        return { publicMarkers: [], groupMarkers: [] };
+      }
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest(
+        "SHA-256",
+        encoder.encode(password)
+      );
+      const hashHex = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      if (hashHex !== groupM[0].groupPasswordHash) {
+        alert("Senha incorreta.");
+        return { publicMarkers: [], groupMarkers: [] };
+      }
+      return { publicMarkers: [], groupMarkers: groupM };
+    }
+
+    return { publicMarkers: publicM, groupMarkers: groupM };
   };
 
-  const togglePublicMarkers = async () => {
-    if (showPublic) {
-      setPublicMarkers([]);
-      setTeamMarkers([]);
-      setRevealedTeamIds(new Set());
-      setShowPublic(false);
-    } else {
-      const { publicMarkers, teamMarkers } = await loadPublicMarkers();
-      setPublicMarkers(publicMarkers);
-      setTeamMarkers(teamMarkers);
-      setShowPublic(true);
+  const handleExplore = async () => {
+    if (!searchGroup.trim()) {
+      alert("Digite um nome de grupo (ex: 'public', 'equipe', 'expedicao1')");
+      return;
     }
+    setLoadingGroup(true);
+    const result = await loadMarkersByGroup(searchGroup.trim(), searchPassword);
+    setPublicMarkers(result.publicMarkers);
+    setGroupMarkers(result.groupMarkers);
+    setRevealedGroupIds(new Set());
+    setShowExplorer(false);
+    setLoadingGroup(false);
+  };
+
+  const clearExplorer = () => {
+    setPublicMarkers([]);
+    setGroupMarkers([]);
+    setRevealedGroupIds(new Set());
+    setSearchGroup("");
+    setSearchPassword("");
   };
 
   // GEOLOCATION
@@ -507,18 +546,14 @@ export default function Home() {
             onOpen={() => setShowLocationsDialog(true)}
           />
           <button
-            onClick={togglePublicMarkers}
+            onClick={() => setShowExplorer(true)}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: showPublic
-                ? "rgba(59,130,246,0.3)"
-                : "rgba(0,0,0,0.45)",
+              background: "rgba(0,0,0,0.45)",
               backdropFilter: "blur(20px)",
-              border: showPublic
-                ? "1px solid #3b82f6"
-                : "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.08)",
               borderRadius: 40,
               padding: isMobile ? "8px 12px" : "10px 16px",
               boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
@@ -530,10 +565,30 @@ export default function Home() {
             }}
           >
             <Globe size={16} />
-            <span>
-              {showPublic ? "Ocultar locais públicos" : "Explorar locais"}
-            </span>
+            <span>Explorar locais</span>
           </button>
+          {(publicMarkers.length > 0 || groupMarkers.length > 0) && (
+            <button
+              onClick={clearExplorer}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                background: "rgba(0,0,0,0.45)",
+                backdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 40,
+                padding: isMobile ? "8px 12px" : "10px 16px",
+                cursor: "pointer",
+                color: "#fff",
+                fontWeight: 500,
+                fontSize: isMobile ? 12 : 14,
+              }}
+            >
+              <X size={14} />
+              <span>Limpar</span>
+            </button>
+          )}
         </div>
 
         {/* Centro: botões de estilo */}
@@ -662,6 +717,116 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      {/* MODAL DE EXPLORAÇÃO */}
+      {showExplorer && (
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 200,
+            background: "rgba(0,0,0,0.85)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(255,255,255,0.2)",
+            borderRadius: 32,
+            padding: 24,
+            width: "90%",
+            maxWidth: 400,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 20,
+            }}
+          >
+            <h3 style={{ margin: 0, color: "#fff" }}>Explorar locais</h3>
+            <button
+              onClick={() => setShowExplorer(false)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              <X size={24} />
+            </button>
+          </div>
+          <input
+            type="text"
+            placeholder="Nome do grupo (ex: 'public', 'equipe', 'expedicao1')"
+            value={searchGroup}
+            onChange={(e) => setSearchGroup(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: 28,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.1)",
+              color: "#fff",
+              marginBottom: 12,
+              fontSize: 14,
+            }}
+          />
+          <input
+            type="password"
+            placeholder="Senha do grupo (se necessário)"
+            value={searchPassword}
+            onChange={(e) => setSearchPassword(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: 28,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.1)",
+              color: "#fff",
+              marginBottom: 20,
+              fontSize: 14,
+            }}
+          />
+          <button
+            onClick={handleExplore}
+            disabled={loadingGroup}
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: 40,
+              background: "linear-gradient(135deg, #3a3a3a, #0a0a0a)",
+              color: "#fff",
+              fontWeight: "bold",
+              border: "none",
+              cursor: loadingGroup ? "wait" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            {loadingGroup ? (
+              "Carregando..."
+            ) : (
+              <>
+                <Search size={18} /> Ir
+              </>
+            )}
+          </button>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.5)",
+              marginTop: 16,
+              textAlign: "center",
+            }}
+          >
+            Digite "public" para ver locais públicos.
+          </div>
+        </div>
+      )}
 
       {/* CUSTOM ZOOM CONTROLS */}
       <div className="custom-zoom-controls">

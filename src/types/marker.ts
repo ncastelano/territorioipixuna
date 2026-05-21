@@ -1,4 +1,3 @@
-// types/marker.ts
 export type MarkerType = {
   id: string;
   lng: number;
@@ -12,7 +11,7 @@ export type MarkerType = {
   synced?: boolean;
   userId?: string;
   userEmail?: string;
-  visibility?: "public" | "private" | "team";
-  teamPasswordHash?: string; // apenas para uso interno (hash)
-  teamPassword?: string; // senha em texto plano (usada localmente antes de sync)
+  groupTag?: string; // nome do grupo (ex: "public", "equipe", "expedicao1")
+  groupPasswordHash?: string; // hash da senha (opcional)
+  groupPassword?: string; // senha em texto plano (apenas para uso local antes do sync)
 };
