@@ -2,7 +2,7 @@
 
 type Props = {
   total: number;
-  synced: number; // adicionado
+  synced: number;
   unsynced: number;
   onOpen: () => void;
   isMobile: boolean;
@@ -19,56 +19,48 @@ export default function ButtonLocais({
     <button
       onClick={onOpen}
       style={{
-        pointerEvents: "auto",
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 8,
         background: "rgba(0,0,0,0.45)",
         backdropFilter: "blur(20px)",
         border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 22,
-        padding: isMobile ? "10px 14px" : "12px 16px",
+        borderRadius: 40,
+        padding: isMobile ? "8px 12px" : "10px 16px",
         boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
         cursor: "pointer",
         color: "#fff",
         fontWeight: 700,
-        fontSize: isMobile ? 13 : 15,
-        position: "absolute",
-        right: 16,
-        top: 5,
-        zIndex: 50,
+        fontSize: isMobile ? 12 : 14,
+        transition: "all 0.2s",
       }}
     >
-      {/* Indicador de sincronizados (azul) */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <div
           style={{
-            width: 10,
-            height: 10,
+            width: 8,
+            height: 8,
             borderRadius: 999,
-            background: "#3b82f6", // azul
-            boxShadow: "0 0 6px rgba(59,130,246,0.6)",
+            background: "#3b82f6",
+            boxShadow: "0 0 4px #3b82f6",
           }}
         />
-        <span style={{ fontSize: 13 }}>{synced}</span>
+        <span>{synced}</span>
       </div>
-
-      {/* Indicador de pendentes (vermelho) */}
       {unsynced > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div
             style={{
-              width: 10,
-              height: 10,
+              width: 8,
+              height: 8,
               borderRadius: 999,
               background: "#ef4444",
-              boxShadow: "0 0 6px rgba(239,68,68,0.6)",
+              boxShadow: "0 0 4px #ef4444",
             }}
           />
-          <span style={{ fontSize: 13 }}>{unsynced}</span>
+          <span>{unsynced}</span>
         </div>
       )}
-
       <span>{total} locais</span>
     </button>
   );
