@@ -28,11 +28,14 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
   const [locationName, setLocationName] = useState("Buscando localização...");
   const [loadingLocation, setLoadingLocation] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [visibility, setVisibility] = useState<"public" | "private" | "team">(
+    "public"
+  );
+  const [teamPassword, setTeamPassword] = useState("");
+  const [confirmTeamPassword, setConfirmTeamPassword] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // =========================
   // PREVIEW
-  // =========================
   useEffect(() => {
     if (!mediaFile) {
       setPreviewUrl("");
@@ -40,14 +43,10 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     }
     const url = URL.createObjectURL(mediaFile);
     setPreviewUrl(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
+    return () => URL.revokeObjectURL(url);
   }, [mediaFile]);
 
-  // =========================
   // REVERSE GEOCODE
-  // =========================
   useEffect(() => {
     const fetchLocationName = async () => {
       try {
@@ -68,32 +67,47 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     fetchLocationName();
   }, [lng, lat]);
 
-  const acceptType = useMemo(() => {
-    return mediaType === "photo" ? "image/*" : "video/*";
-  }, [mediaType]);
+  const acceptType = useMemo(
+    () => (mediaType === "photo" ? "image/*" : "video/*"),
+    [mediaType]
+  );
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = reject;
     });
+
+  const hashPassword = async (password: string) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   };
 
-  // =========================
-  // SAVE (com userId e userEmail)
-  // =========================
   const handleSave = async () => {
     try {
       setSaving(true);
       let mediaUrl = "";
-      if (mediaFile) {
-        mediaUrl = await fileToBase64(mediaFile);
-      }
+      if (mediaFile) mediaUrl = await fileToBase64(mediaFile);
 
-      // Obter usuário atual para associar ao marcador
       const user = await getCurrentUser();
+
+      let passwordHash = "";
+      if (visibility === "team" && teamPassword) {
+        if (teamPassword !== confirmTeamPassword) {
+          alert("As senhas não coincidem.");
+          return;
+        }
+        if (teamPassword.length < 4) {
+          alert("A senha deve ter pelo menos 4 caracteres.");
+          return;
+        }
+        passwordHash = await hashPassword(teamPassword);
+      }
 
       const newMarker: MarkerType = {
         id: crypto.randomUUID(),
@@ -108,9 +122,11 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
         synced: false,
         userId: user?.id,
         userEmail: user?.email,
+        visibility,
+        teamPasswordHash: passwordHash || undefined,
+        teamPassword: visibility === "team" ? teamPassword : undefined,
       };
 
-      // Atualizar localStorage
       const existing = localStorage.getItem("territorio-markers");
       const parsed = existing ? JSON.parse(existing) : [];
       localStorage.setItem(
@@ -155,7 +171,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
         }}
       >
-        {/* Espaço para navbar */}
         <div style={{ width: "100%", height: 90 }} />
 
         {/* Header */}
@@ -424,6 +439,93 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           />
         </div>
 
+        {/* Visibilidade */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: 12, color: "#fff", fontWeight: 600 }}>
+            Quem pode ver este local?
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 20,
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="radio"
+                name="visibility"
+                value="public"
+                checked={visibility === "public"}
+                onChange={() => setVisibility("public")}
+              />
+              <span>🌍 Público (todos)</span>
+            </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="radio"
+                name="visibility"
+                value="private"
+                checked={visibility === "private"}
+                onChange={() => setVisibility("private")}
+              />
+              <span>🔒 Privado (só eu)</span>
+            </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="radio"
+                name="visibility"
+                value="team"
+                checked={visibility === "team"}
+                onChange={() => setVisibility("team")}
+              />
+              <span>👥 Equipe (membros aprovados)</span>
+            </label>
+          </div>
+
+          {visibility === "team" && (
+            <div style={{ marginTop: 12 }}>
+              <input
+                type="password"
+                placeholder="Senha da equipe (mínimo 4 caracteres)"
+                value={teamPassword}
+                onChange={(e) => setTeamPassword(e.target.value)}
+                style={{ ...inputStyle, marginBottom: 8 }}
+              />
+              <input
+                type="password"
+                placeholder="Confirmar senha"
+                value={confirmTeamPassword}
+                onChange={(e) => setConfirmTeamPassword(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Botões */}
         <div style={{ display: "flex", gap: 12 }}>
           <button
@@ -469,3 +571,14 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     </div>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: 28,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(20,20,25,0.6)",
+  color: "#fff",
+  outline: "none",
+  fontSize: 14,
+};

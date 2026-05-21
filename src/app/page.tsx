@@ -1,4 +1,4 @@
-// app/page.tsx
+// app/page.tsx (versão completa com equipe + senha)
 
 "use client";
 
@@ -34,6 +34,10 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [markers, setMarkers] = useState<MarkerType[]>([]);
   const [publicMarkers, setPublicMarkers] = useState<MarkerType[]>([]);
+  const [teamMarkers, setTeamMarkers] = useState<MarkerType[]>([]);
+  const [revealedTeamIds, setRevealedTeamIds] = useState<Set<string>>(
+    new Set()
+  );
   const [showPublic, setShowPublic] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -44,7 +48,7 @@ export default function Home() {
     lat: number;
   } | null>(null);
 
-  // ========================= MOBILE =========================
+  // MOBILE
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -52,7 +56,7 @@ export default function Home() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // ========================= INIT MAP =========================
+  // INIT MAP
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -84,7 +88,7 @@ export default function Home() {
     };
   }, [isMobile]);
 
-  // ========================= CHANGE STYLE =========================
+  // CHANGE STYLE
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     let style = "mapbox://styles/mapbox/satellite-streets-v12";
@@ -93,7 +97,7 @@ export default function Home() {
     mapRef.current.setStyle(style);
   }, [mapStyle, mapLoaded]);
 
-  // ========================= LOAD STORAGE =========================
+  // LOAD STORAGE
   useEffect(() => {
     const stored = localStorage.getItem("territorio-markers");
     if (stored) {
@@ -105,16 +109,18 @@ export default function Home() {
     }
   }, []);
 
-  // ========================= RENDER MARKERS (inclui públicos) =========================
+  // ======================== RENDER LOCAIS LOCAIS E PÚBLICOS REVELADOS ========================
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
-
-    // Remove todos os marcadores existentes
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
 
-    // Concatena os marcadores locais + públicos
-    const allMarkers = [...markers, ...publicMarkers];
+    // Locais do usuário + públicos + equipes já reveladas
+    const allMarkers = [
+      ...markers,
+      ...publicMarkers,
+      ...teamMarkers.filter((t) => revealedTeamIds.has(t.id)),
+    ];
 
     allMarkers.forEach((item) => {
       const el = document.createElement("div");
@@ -163,55 +169,121 @@ export default function Home() {
 
       markersRef.current.push(marker);
     });
-  }, [markers, publicMarkers, mapLoaded]);
+  }, [markers, publicMarkers, teamMarkers, revealedTeamIds, mapLoaded]);
 
-  // ========================= CARREGAR PÚBLICOS DO SUPABASE =========================
+  // ======================== RENDER PINS DE EQUIPE NÃO REVELADOS (CADEADO) ========================
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return;
+
+    teamMarkers.forEach((item) => {
+      if (revealedTeamIds.has(item.id)) return; // já revelado, será renderizado no outro useEffect
+
+      const el = document.createElement("div");
+      el.style.width = "36px";
+      el.style.height = "36px";
+      el.style.borderRadius = "999px";
+      el.style.border = "3px solid #8b5cf6"; // roxo para equipe
+      el.style.boxShadow = "0 0 12px rgba(139,92,246,0.8)";
+      el.style.background = "#fff";
+      el.style.display = "flex";
+      el.style.alignItems = "center";
+      el.style.justifyContent = "center";
+      el.style.fontSize = "20px";
+      el.innerText = "🔒";
+      el.style.cursor = "pointer";
+
+      const marker = new mapboxgl.Marker(el)
+        .setLngLat([item.lng, item.lat])
+        .addTo(mapRef.current!);
+
+      el.addEventListener("click", async () => {
+        const password = prompt(
+          "Digite a senha para acessar este local da equipe:"
+        );
+        if (!password) return;
+
+        try {
+          const res = await fetch("/api/verify-team-location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ locationId: item.id, password }),
+          });
+          const { success } = await res.json();
+
+          if (success) {
+            setRevealedTeamIds((prev) => new Set(prev).add(item.id));
+            marker.remove();
+          } else {
+            alert("Senha incorreta.");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Erro ao verificar senha.");
+        }
+      });
+
+      markersRef.current.push(marker);
+    });
+  }, [teamMarkers, revealedTeamIds, mapLoaded]);
+
+  // ======================== CARREGAR LOCAIS PÚBLICOS E DE EQUIPE DO SUPABASE ========================
   const loadPublicMarkers = async () => {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("locations")
       .select("*")
+      .in("visibility", ["public", "team"])
       .order("created_at", { ascending: false });
 
     if (error) {
       console.error(error);
       alert("Erro ao carregar locais públicos.");
-      return [];
+      return { publicMarkers: [], teamMarkers: [] };
     }
 
-    // Converter cada registro para MarkerType
-    const publicM: MarkerType[] = (data || []).map((loc: any) => ({
-      id: loc.id,
-      lng: loc.lng,
-      lat: loc.lat,
-      title: loc.title || "Local público",
-      description: loc.description || "",
-      mediaType: loc.media_type === "video" ? "video" : "photo",
-      mediaUrl: loc.media_url || "",
-      address: loc.address || "",
-      createdAt: loc.created_at,
-      synced: true, // todos os públicos estão sincronizados
-      userId: undefined,
-      userEmail: undefined,
-    }));
+    const publicM: MarkerType[] = [];
+    const teamM: MarkerType[] = [];
 
-    return publicM;
+    (data || []).forEach((loc: any) => {
+      const marker: MarkerType = {
+        id: loc.id,
+        lng: loc.lng,
+        lat: loc.lat,
+        title: loc.title || "Local público",
+        description: loc.description || "",
+        mediaType: loc.media_type === "video" ? "video" : "photo",
+        mediaUrl: loc.media_url || "",
+        address: loc.address || "",
+        createdAt: loc.created_at,
+        synced: true,
+        userId: undefined,
+        userEmail: undefined,
+        visibility: loc.visibility || "public",
+        teamPasswordHash: loc.team_password_hash,
+      };
+
+      if (loc.visibility === "public") publicM.push(marker);
+      else if (loc.visibility === "team") teamM.push(marker);
+    });
+
+    return { publicMarkers: publicM, teamMarkers: teamM };
   };
 
   const togglePublicMarkers = async () => {
     if (showPublic) {
-      // Remove os públicos
       setPublicMarkers([]);
+      setTeamMarkers([]);
+      setRevealedTeamIds(new Set());
       setShowPublic(false);
     } else {
-      // Carrega e exibe
-      const publics = await loadPublicMarkers();
-      setPublicMarkers(publics);
+      const { publicMarkers, teamMarkers } = await loadPublicMarkers();
+      setPublicMarkers(publicMarkers);
+      setTeamMarkers(teamMarkers);
       setShowPublic(true);
     }
   };
 
-  // ========================= GEOLOCATION =========================
+  // GEOLOCATION
   const goToMyLocation = () => {
     if (!navigator.geolocation || !mapRef.current) return;
     navigator.geolocation.getCurrentPosition((position) => {
@@ -223,11 +295,11 @@ export default function Home() {
     });
   };
 
-  // ========================= ZOOM =========================
+  // ZOOM
   const zoomIn = () => mapRef.current?.zoomIn({ duration: 400 });
   const zoomOut = () => mapRef.current?.zoomOut({ duration: 400 });
 
-  // ========================= SELECT LOCATION =========================
+  // SELECT LOCATION
   const startSelectingLocation = () => setSelectingLocation(true);
   const confirmLocation = () => {
     if (!mapRef.current) return;
@@ -237,7 +309,7 @@ export default function Home() {
     setShowAddModal(true);
   };
 
-  // ========================= SAVE MARKER =========================
+  // SAVE MARKER
   const handleSaveMarker = (marker: MarkerType) => {
     const updated = [...markers, marker];
     setMarkers(updated);
@@ -246,7 +318,7 @@ export default function Home() {
     setPendingCoords(null);
   };
 
-  // ========================= REMOVE MARKER =========================
+  // REMOVE MARKER
   const removeMarker = (id: string) => {
     const updated = markers.filter((item) => item.id !== id);
     setMarkers(updated);
@@ -254,7 +326,7 @@ export default function Home() {
     setSelectedMarker(null);
   };
 
-  // ========================= SYNC UPDATE =========================
+  // SYNC UPDATE
   const handleSynced = (id: string) => {
     const updated = markers.map((item) =>
       item.id === id ? { ...item, synced: true } : item
@@ -276,7 +348,6 @@ export default function Home() {
         background: "#000",
       }}
     >
-      {/* MAP */}
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
 
       {/* SELECT LOCATION MODE */}
@@ -404,7 +475,7 @@ export default function Home() {
         </>
       )}
 
-      {/* ========== TOP NAVBAR ========== */}
+      {/* TOP NAVBAR */}
       <div
         style={{
           position: "absolute",
@@ -419,7 +490,7 @@ export default function Home() {
           pointerEvents: "none",
         }}
       >
-        {/* Esquerda: dois botões empilhados */}
+        {/* Esquerda: botões empilhados */}
         <div
           style={{
             pointerEvents: "auto",
@@ -465,7 +536,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Centro: botões de estilo do mapa */}
+        {/* Centro: botões de estilo */}
         <div
           style={{
             pointerEvents: "auto",
@@ -493,7 +564,6 @@ export default function Home() {
               alignItems: "center",
               gap: 6,
               cursor: "pointer",
-              transition: "all 0.2s",
               fontSize: isMobile ? 12 : 14,
               fontWeight: 500,
             }}
@@ -514,7 +584,6 @@ export default function Home() {
               alignItems: "center",
               gap: 6,
               cursor: "pointer",
-              transition: "all 0.2s",
               fontSize: isMobile ? 12 : 14,
               fontWeight: 500,
             }}
@@ -535,7 +604,6 @@ export default function Home() {
               alignItems: "center",
               gap: 6,
               cursor: "pointer",
-              transition: "all 0.2s",
               fontSize: isMobile ? 12 : 14,
               fontWeight: 500,
             }}
@@ -545,7 +613,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Direita: botões de localização e adicionar */}
+        {/* Direita: localização e adicionar */}
         <div
           style={{
             pointerEvents: "auto",

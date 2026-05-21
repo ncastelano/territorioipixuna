@@ -1,7 +1,7 @@
+// components/LocationsDialog.tsx
 "use client";
 
 import { Cloud, Cloudy, Smartphone, Upload, X } from "lucide-react";
-
 import { MarkerType } from "@/types/marker";
 import { getSupabaseClient } from "@/lib/supabase";
 
@@ -15,7 +15,6 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
   const uploadToSupabase = async (marker: MarkerType) => {
     try {
       const supabase = getSupabaseClient();
-
       const { error } = await supabase.from("locations").insert({
         title: marker.title,
         description: marker.description,
@@ -24,30 +23,27 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
         lat: marker.lat,
         media_url: marker.mediaUrl,
         media_type: marker.mediaType,
+        visibility: marker.visibility || "public", // novo campo
       });
 
       if (error) {
         console.error(error);
-        alert("Erro ao salvar");
+        alert("Erro ao salvar no Supabase");
         return;
       }
 
       const updated = markers.map((item) =>
         item.id === marker.id ? { ...item, synced: true } : item
       );
-
       localStorage.setItem("territorio-markers", JSON.stringify(updated));
-
       onSynced(marker.id);
-
-      alert("Salvo no Supabase");
+      alert("Local sincronizado com sucesso!");
     } catch (err) {
       console.error(err);
     }
   };
 
   const unsyncedCount = markers.filter((m) => !m.synced).length;
-
   const syncedCount = markers.length - unsyncedCount;
 
   return (
@@ -87,16 +83,9 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
           }}
         >
           <div>
-            <div
-              style={{
-                color: "#fff",
-                fontWeight: 700,
-                fontSize: 20,
-              }}
-            >
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: 20 }}>
               Localizações
             </div>
-
             <div
               style={{
                 color: "rgba(255,255,255,0.6)",
@@ -107,13 +96,11 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
               }}
             >
               <span>● {syncedCount} salvos</span>
-
               <span style={{ color: "#ef4444" }}>
                 ● {unsyncedCount} pendentes
               </span>
             </div>
           </div>
-
           <button
             onClick={onClose}
             style={{
@@ -185,14 +172,36 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
 
                 {/* CONTENT */}
                 <div style={{ flex: 1 }}>
-                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}>
-                    {item.title}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div
+                      style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}
+                    >
+                      {item.title}
+                    </div>
+                    {item.visibility && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 20,
+                          background: "rgba(0,0,0,0.3)",
+                        }}
+                      >
+                        {item.visibility === "public" && "🌍 Público"}
+                        {item.visibility === "private" && "🔒 Privado"}
+                        {item.visibility === "team" && "👥 Equipe"}
+                      </div>
+                    )}
                   </div>
-
                   <div style={{ color: "rgba(255,255,255,0.6)", marginTop: 6 }}>
                     {item.address}
                   </div>
-
                   <div
                     style={{ color: "rgba(255,255,255,0.75)", marginTop: 10 }}
                   >
@@ -212,7 +221,6 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
                       <Smartphone size={16} />
                       <span>Local</span>
                     </div>
-
                     <div
                       style={{
                         display: "flex",
@@ -250,8 +258,6 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
               </div>
             </div>
           ))}
-
-          {/* BUFFER FINAL */}
           <div style={{ height: 150 }} />
         </div>
       </div>

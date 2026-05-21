@@ -1,3 +1,4 @@
+// types/marker.ts
 export type MarkerType = {
   id: string;
   lng: number;
@@ -9,6 +10,9 @@ export type MarkerType = {
   address: string;
   createdAt: string;
   synced?: boolean;
-  userId?: string; // ID do usuário que criou o marcador
-  userEmail?: string; // Email do usuário que criou o marcador
+  userId?: string;
+  userEmail?: string;
+  visibility?: "public" | "private" | "team";
+  teamPasswordHash?: string; // apenas para uso interno (hash)
+  teamPassword?: string; // senha em texto plano (usada localmente antes de sync)
 };
