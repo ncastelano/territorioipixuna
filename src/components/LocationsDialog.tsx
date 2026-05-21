@@ -25,6 +25,8 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
         media_type: marker.mediaType,
         group_tag: marker.groupTag === "public" ? null : marker.groupTag,
         group_password_hash: marker.groupPasswordHash || null,
+        user_id: marker.userId, // ID do usuário que criou
+        user_email: marker.userEmail, // Email do usuário que criou
       });
 
       if (error) {
@@ -153,6 +155,7 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
                   {item.mediaType === "photo" ? (
                     <img
                       src={item.mediaUrl}
+                      alt="preview"
                       style={{
                         width: "100%",
                         height: "100%",
