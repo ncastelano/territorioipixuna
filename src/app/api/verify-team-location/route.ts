@@ -1,21 +1,30 @@
+// app/api/verify-team-location/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 export async function POST(req: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error("Variáveis do Supabase não definidas");
+      return NextResponse.json(
+        { success: false, error: "Erro de configuração do servidor" },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
     const { locationId, password } = await req.json();
 
     const { data, error } = await supabase
       .from("locations")
-      .select("team_password_hash")
+      .select("group_password_hash")
       .eq("id", locationId)
       .single();
 
-    if (error || !data?.team_password_hash) {
+    if (error || !data?.group_password_hash) {
       return NextResponse.json(
         { success: false, error: "Local não encontrado ou sem senha" },
         { status: 404 }
@@ -31,9 +40,10 @@ export async function POST(req: Request) {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    const isValid = inputHashHex === data.team_password_hash;
+    const isValid = inputHashHex === data.group_password_hash;
     return NextResponse.json({ success: isValid });
   } catch (err) {
+    console.error(err);
     return NextResponse.json(
       { success: false, error: "Erro interno" },
       { status: 500 }
