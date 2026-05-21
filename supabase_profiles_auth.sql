@@ -1,4 +1,4 @@
--- Rode este arquivo no Supabase SQL Editor antes de usar /cadastrar, /entrar e /perfil.
+-- Rode este arquivo no Supabase SQL Editor antes de usar /cadastrar, /login e /perfil.
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,

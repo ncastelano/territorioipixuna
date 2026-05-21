@@ -1,78 +1,35 @@
-// app/cadastrar/page.tsx
-
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { signUp, signIn } from "@/lib/profiles";
-import { UserPlus, Camera, MapPin, Database, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getCurrentUser, signIn } from "@/lib/profiles";
+import { LogIn, MapPin, Camera, Database, Users } from "lucide-react";
 
-function getCadastroMessage(error: unknown) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : "Não foi possível criar sua conta.";
-
-  const normalized = message.toLowerCase();
-
-  if (
-    normalized.includes("already") ||
-    normalized.includes("cadastrado") ||
-    normalized.includes("registered")
-  ) {
-    return "Este email já está cadastrado.";
-  }
-
-  if (
-    normalized.includes("rate limit") ||
-    normalized.includes("limite") ||
-    normalized.includes("security purposes")
-  ) {
-    return "O cadastro não foi concluído agora. Tente novamente em alguns minutos.";
-  }
-
-  if (normalized.includes("invalid") || normalized.includes("email")) {
-    return "Informe um email válido.";
-  }
-
-  if (normalized.includes("password") || normalized.includes("senha")) {
-    return "A senha precisa ter pelo menos 6 caracteres.";
-  }
-
-  return message;
-}
-
-export default function CadastrarPage() {
+export default function EntrarPage() {
   const router = useRouter();
 
-  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  useEffect(() => {
+    getCurrentUser().then((user) => {
+      if (user) router.replace("/perfil");
+    });
+  }, [router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
     setMessage(null);
 
-    if (password !== confirmPassword) {
-      setMessage("As senhas não conferem.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
     try {
-      // Criar conta
-      await signUp(email.trim(), password, fullName.trim());
-      // Fazer login automático
       await signIn(email.trim(), password);
       router.push("/");
     } catch (error) {
-      setMessage(getCadastroMessage(error));
+      setMessage("Email ou senha inválidos. Verifique suas credenciais.");
     } finally {
       setIsSubmitting(false);
     }
@@ -124,9 +81,9 @@ export default function CadastrarPage() {
           width: "100%",
           gap: "2rem",
         }}
-        className="cadastro-container"
+        className="login-container"
       >
-        {/* FORMULÁRIO DE CADASTRO (ESQUERDA) */}
+        {/* CARD DE LOGIN (ESQUERDA) */}
         <div
           style={{
             width: "100%",
@@ -152,47 +109,28 @@ export default function CadastrarPage() {
               <h2
                 style={{ fontSize: "1.8rem", fontWeight: 700, marginBottom: 4 }}
               >
-                Criar conta
+                Entrar
               </h2>
               <p
                 style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.5)" }}
               >
-                Comece a mapear agora mesmo
+                Acesse seu painel de mapeamento
               </p>
             </div>
 
             <input
-              placeholder="Nome"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              disabled={isSubmitting}
-              style={inputStyle}
-            />
-
-            <input
-              placeholder="e-mail"
+              placeholder="Email cadastrado"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={isSubmitting}
               style={inputStyle}
             />
 
             <input
-              placeholder="Senha (mínimo 6 caracteres)"
+              placeholder="Senha"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              disabled={isSubmitting}
-              style={inputStyle}
-            />
-
-            <input
-              placeholder="Confirmar senha"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={isSubmitting}
               style={inputStyle}
             />
 
@@ -212,12 +150,12 @@ export default function CadastrarPage() {
             )}
 
             <button style={buttonStyle} disabled={isSubmitting}>
-              <UserPlus size={18} />
-              {isSubmitting ? "Criando..." : "Cadastrar"}
+              <LogIn size={18} />
+              {isSubmitting ? "Entrando..." : "Entrar"}
             </button>
 
             <Link
-              href="/login"
+              href="/cadastrar"
               style={{
                 textAlign: "center",
                 fontSize: 13,
@@ -226,8 +164,10 @@ export default function CadastrarPage() {
                 marginTop: 8,
               }}
             >
-              Já tem conta?{" "}
-              <span style={{ color: "#cccccc", fontWeight: 500 }}>Entrar</span>
+              Não tem conta?{" "}
+              <span style={{ color: "#cccccc", fontWeight: 500 }}>
+                Cadastre-se
+              </span>
             </Link>
           </form>
         </div>
@@ -344,7 +284,7 @@ export default function CadastrarPage() {
         </div>
       </div>
 
-      {/* RODAPÉ TÉCNICO - aparece abaixo em desktop e mobile */}
+      {/* RODAPÉ TÉCNICO FIXO (igual ao cadastro) */}
       <div
         style={{
           position: "fixed",
@@ -385,12 +325,12 @@ export default function CadastrarPage() {
           .presentation-section {
             display: none;
           }
-          .cadastro-container {
+          .login-container {
             justify-content: center;
           }
         }
         @media (min-width: 769px) {
-          .cadastro-container {
+          .login-container {
             flex-wrap: nowrap;
           }
         }

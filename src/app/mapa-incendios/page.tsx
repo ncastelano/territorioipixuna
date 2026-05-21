@@ -1,4 +1,4 @@
-//app/mapa/page.tsx
+// app/page.tsx
 
 "use client";
 
@@ -17,8 +17,6 @@ import {
   FileText,
   Clock3,
 } from "lucide-react";
-
-
 
 const BIOME_COLORS: Record<string, string> = {
   Amazônia: "#10b981",
@@ -48,7 +46,7 @@ interface CsvInfo {
   updatedAt?: string;
 }
 
-export default function MapaPage() {
+export default function Home() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -99,7 +97,7 @@ export default function MapaPage() {
     try {
       setLoading(true);
 
-      const res = await fetch("/api/focos-diarios");
+      const res = await fetch("/api/focos-10min");
 
       const data = await res.json();
 
@@ -141,6 +139,7 @@ export default function MapaPage() {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
     if (!token) {
       setError("NEXT_PUBLIC_MAPBOX_TOKEN não encontrado");
 
@@ -154,7 +153,6 @@ export default function MapaPage() {
 
       style: "mapbox://styles/mapbox/dark-v11",
 
-      // MOBILE MAIS FECHADO
       center: isMobile ? [-54, -13] : [-55, -12],
 
       zoom: isMobile ? 3.2 : 4,
@@ -362,15 +360,47 @@ export default function MapaPage() {
       map.getCanvas().style.cursor = "";
     });
 
+    // =========================
+    // FIX DO CLICK
+    // =========================
+
     map.on("click", "focos-circles", (event) => {
       const properties = event.features?.[0]?.properties;
 
       if (!properties) return;
 
-      setSelectedPoint(properties as FireHotspot);
+      const point: FireHotspot = {
+        id: properties.id ?? "",
+
+        lat: Number(properties.lat),
+
+        lon: Number(properties.lon),
+
+        data_hora_gmt: properties.data_hora_gmt ?? "",
+
+        satelite: properties.satelite ?? "",
+
+        municipio: properties.municipio ?? "",
+
+        estado: properties.estado ?? "",
+
+        risco_fogo:
+          properties.risco_fogo !== undefined && properties.risco_fogo !== null
+            ? Number(properties.risco_fogo)
+            : null,
+
+        bioma: properties.bioma ?? "",
+
+        frp:
+          properties.frp !== undefined && properties.frp !== null
+            ? Number(properties.frp)
+            : null,
+      };
+
+      setSelectedPoint(point);
 
       map.easeTo({
-        center: [properties.lon, properties.lat],
+        center: [point.lon, point.lat],
 
         zoom: Math.max(map.getZoom(), 7),
 
@@ -420,8 +450,14 @@ export default function MapaPage() {
   }, [filteredPoints, mapLoaded]);
 
   // =========================
-  // TIME FORMAT
+  // FORMATTERS
   // =========================
+
+  const formatNumber = (value: any, fixed = 1) => {
+    const num = Number(value);
+
+    return Number.isFinite(num) ? num.toFixed(fixed) : "N/A";
+  };
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "N/A";
@@ -485,7 +521,7 @@ export default function MapaPage() {
         >
           <Flame size={18} color="#ef4444" />
 
-          {!isMobile && <span>Focos Diários</span>}
+          {!isMobile && <span>Incendios </span>}
 
           <div
             style={{
@@ -765,7 +801,7 @@ export default function MapaPage() {
                   marginBottom: 12,
                 }}
               >
-                🔥 Risco: {(selectedPoint.risco_fogo ?? 0).toFixed(2)}
+                🔥 Risco: {formatNumber(selectedPoint.risco_fogo, 2)}
               </div>
 
               <h3
@@ -840,8 +876,8 @@ export default function MapaPage() {
                   fontWeight: 700,
                 }}
               >
-                {selectedPoint.frp !== null
-                  ? `${selectedPoint.frp.toFixed(1)} MW`
+                {Number.isFinite(selectedPoint.frp)
+                  ? `${Number(selectedPoint.frp).toFixed(1)} MW`
                   : "N/A"}
               </div>
             </div>
@@ -890,9 +926,9 @@ export default function MapaPage() {
             <Info size={14} />
 
             <span>
-              Lat: {selectedPoint.lat.toFixed(5)}
+              Lat: {Number(selectedPoint.lat).toFixed(5)}
               {" | "}
-              Lon: {selectedPoint.lon.toFixed(5)}
+              Lon: {Number(selectedPoint.lon).toFixed(5)}
             </span>
           </div>
         </div>
