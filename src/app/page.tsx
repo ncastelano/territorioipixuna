@@ -44,6 +44,7 @@ export default function Home() {
   const [searchGroup, setSearchGroup] = useState("");
   const [searchPassword, setSearchPassword] = useState("");
   const [loadingGroup, setLoadingGroup] = useState(false);
+  const [loadingInitial, setLoadingInitial] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLocationsDialog, setShowLocationsDialog] = useState(false);
@@ -102,7 +103,7 @@ export default function Home() {
     mapRef.current.setStyle(style);
   }, [mapStyle, mapLoaded]);
 
-  // LOAD STORAGE
+  // LOAD STORAGE (LOCAIS)
   useEffect(() => {
     const stored = localStorage.getItem("territorio-markers");
     if (stored) {
@@ -112,6 +113,47 @@ export default function Home() {
         console.error(err);
       }
     }
+  }, []);
+
+  // CARREGAR PÚBLICOS NA INICIALIZAÇÃO
+  useEffect(() => {
+    const loadPublicMarkersOnInit = async () => {
+      if (loadingInitial) return;
+      setLoadingInitial(true);
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from("locations")
+        .select("*")
+        .or("group_tag.is.null,group_tag.eq.public")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setLoadingInitial(false);
+        return;
+      }
+
+      const publicM: MarkerType[] = (data || []).map((loc: any) => ({
+        id: loc.id,
+        lng: loc.lng,
+        lat: loc.lat,
+        title: loc.title || "Local público",
+        description: loc.description || "",
+        mediaType: loc.media_type === "video" ? "video" : "photo",
+        mediaUrl: loc.media_url || "",
+        address: loc.address || "",
+        createdAt: loc.created_at,
+        synced: true,
+        userId: loc.user_id,
+        userEmail: loc.user_email,
+        groupTag: loc.group_tag || "public",
+        groupPasswordHash: loc.group_password_hash,
+      }));
+      setPublicMarkers(publicM);
+      setLoadingInitial(false);
+    };
+
+    loadPublicMarkersOnInit();
   }, []);
 
   // RENDER LOCAIS LOCAIS + PÚBLICOS + GRUPOS REVELADOS
@@ -258,8 +300,8 @@ export default function Home() {
         address: loc.address || "",
         createdAt: loc.created_at,
         synced: true,
-        userId: undefined,
-        userEmail: undefined,
+        userId: loc.user_id,
+        userEmail: loc.user_email,
         groupTag: loc.group_tag,
         groupPasswordHash: loc.group_password_hash,
       };
@@ -271,7 +313,6 @@ export default function Home() {
       }
     });
 
-    // Se for um grupo não-público e houver senha, validar
     if (
       groupTag !== "public" &&
       groupTag !== "" &&
@@ -307,6 +348,7 @@ export default function Home() {
     }
     setLoadingGroup(true);
     const result = await loadMarkersByGroup(searchGroup.trim(), searchPassword);
+    // Substitui os públicos atuais pelos novos (se for "public", carrega os públicos; se for outro grupo, limpa públicos)
     setPublicMarkers(result.publicMarkers);
     setGroupMarkers(result.groupMarkers);
     setRevealedGroupIds(new Set());

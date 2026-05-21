@@ -41,6 +41,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     hasPassword: boolean;
     groupTag: string;
   } | null>(null);
+  const [isPublicSelected, setIsPublicSelected] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // PREVIEW
@@ -111,21 +112,48 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Sincroniza o chip público com o estado do input
+  useEffect(() => {
+    if (groupTag === "") {
+      if (!isPublicSelected) {
+        setIsPublicSelected(true);
+      }
+    } else {
+      if (isPublicSelected) {
+        setIsPublicSelected(false);
+      }
+    }
+  }, [groupTag]);
+
   const handleGroupInputChange = (value: string) => {
     setGroupTag(value);
     setSearchTerm(value);
     setShowGroupSuggestions(true);
     setSelectedGroupInfo(null);
-    // Limpar senha se mudar de grupo
     setGroupPassword("");
     setConfirmGroupPassword("");
+    if (value.trim() !== "") {
+      setIsPublicSelected(false);
+    } else {
+      setIsPublicSelected(true);
+    }
+  };
+
+  const selectPublic = () => {
+    setGroupTag("");
+    setSearchTerm("");
+    setShowGroupSuggestions(false);
+    setSelectedGroupInfo(null);
+    setGroupPassword("");
+    setConfirmGroupPassword("");
+    setIsPublicSelected(true);
   };
 
   const selectExistingGroup = async (tag: string) => {
     setGroupTag(tag);
     setSearchTerm(tag);
     setShowGroupSuggestions(false);
-    // Verificar se o grupo tem senha
+    setIsPublicSelected(false);
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from("locations")
@@ -169,17 +197,15 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
       const user = await getCurrentUser();
 
       let finalGroupTag = groupTag.trim();
-      if (finalGroupTag === "") finalGroupTag = "public";
+      if (isPublicSelected || finalGroupTag === "") finalGroupTag = "public";
       if (finalGroupTag.length > 30) finalGroupTag = finalGroupTag.slice(0, 30);
 
       let passwordHash = "";
-      // Se é um grupo existente com senha, validar a senha fornecida
       if (selectedGroupInfo && selectedGroupInfo.hasPassword) {
         if (!groupPassword) {
           alert("Este grupo requer senha para adicionar locais.");
           return;
         }
-        // Verificar se a senha está correta (consultar hash do grupo)
         const supabase = getSupabaseClient();
         const { data, error } = await supabase
           .from("locations")
@@ -194,14 +220,12 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
             alert("Senha do grupo incorreta.");
             return;
           }
-          // Senha correta: não precisa salvar hash novamente (já existe)
-          passwordHash = storedHash; // ou vazio, pois já existe no banco
+          passwordHash = storedHash;
         } else {
           alert("Erro ao verificar senha do grupo.");
           return;
         }
       } else if (finalGroupTag !== "public" && groupPassword) {
-        // Novo grupo com senha
         if (groupPassword !== confirmGroupPassword) {
           alert("As senhas não coincidem.");
           return;
@@ -546,10 +570,37 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           />
         </div>
 
-        {/* Grupo personalizado com busca */}
+        {/* Grupo personalizado com busca e chip público */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ marginBottom: 12, color: "#fff", fontWeight: 600 }}>
             Grupo (opcional)
+          </div>
+          {/* Chip público */}
+          <div style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={selectPublic}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 12px",
+                borderRadius: 30,
+                border: isPublicSelected
+                  ? "1px solid #10b981"
+                  : "1px solid rgba(255,255,255,0.2)",
+                background: isPublicSelected
+                  ? "rgba(16,185,129,0.2)"
+                  : "transparent",
+                color: isPublicSelected ? "#10b981" : "#aaa",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              <span>🌍</span> Público
+            </button>
           </div>
           <div style={{ position: "relative" }}>
             <input
@@ -592,7 +643,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                   {!loadingGroups &&
                     existingGroups.length === 0 &&
                     searchTerm.length > 0 && (
-                      // Mensagem movida para fora do dropdown – veja abaixo
                       <div
                         style={{
                           padding: 12,
@@ -628,9 +678,8 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
               )}
           </div>
 
-          {/* Área de mensagem e campos de senha (AGORA A MENSAGEM APARECE EM CIMA) */}
+          {/* Área de mensagem e campos de senha */}
           <div style={{ marginTop: 12 }}>
-            {/* Mensagem de "nenhum grupo encontrado" – exibida acima dos campos, apenas quando não há sugestões e o usuário está digitando */}
             {!loadingGroups &&
               existingGroups.length === 0 &&
               searchTerm.length > 0 &&
@@ -647,7 +696,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                 </div>
               )}
 
-            {!groupTag && (
+            {!groupTag && isPublicSelected && (
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
                 🔓 Se você não escolher um grupo, o local será público.
               </div>
