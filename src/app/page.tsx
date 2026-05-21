@@ -1,3 +1,5 @@
+// app/page.tsx
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -19,7 +21,7 @@ import AddLocationModal from "@/components/AddLocationModal";
 import MarkerCard from "@/components/MarkerCard";
 import LocationsDialog from "@/components/LocationsDialog";
 import BottomLocais from "@/components/ButtonLocais";
-import PublicLocationsDialog from "@/components/PublicLocations";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export default function Home() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -31,10 +33,11 @@ export default function Home() {
   );
   const [isMobile, setIsMobile] = useState(false);
   const [markers, setMarkers] = useState<MarkerType[]>([]);
+  const [publicMarkers, setPublicMarkers] = useState<MarkerType[]>([]);
+  const [showPublic, setShowPublic] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLocationsDialog, setShowLocationsDialog] = useState(false);
-  const [showPublicDialog, setShowPublicDialog] = useState(false);
   const [selectingLocation, setSelectingLocation] = useState(false);
   const [pendingCoords, setPendingCoords] = useState<{
     lng: number;
@@ -102,18 +105,25 @@ export default function Home() {
     }
   }, []);
 
-  // ========================= RENDER MARKERS =========================
+  // ========================= RENDER MARKERS (inclui públicos) =========================
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
+
+    // Remove todos os marcadores existentes
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
-    markers.forEach((item) => {
+
+    // Concatena os marcadores locais + públicos
+    const allMarkers = [...markers, ...publicMarkers];
+
+    allMarkers.forEach((item) => {
       const el = document.createElement("div");
       const isSynced = item.synced === true;
       const borderColor = isSynced ? "#3b82f6" : "#ef4444";
       const shadowColor = isSynced
         ? "rgba(59,130,246,0.8)"
         : "rgba(239,68,68,0.8)";
+
       el.style.width = "36px";
       el.style.height = "36px";
       el.style.borderRadius = "999px";
@@ -137,9 +147,11 @@ export default function Home() {
         el.innerText = "📍";
         el.style.fontWeight = "bold";
       }
+
       const marker = new mapboxgl.Marker(el)
         .setLngLat([item.lng, item.lat])
         .addTo(mapRef.current!);
+
       el.addEventListener("click", () => {
         setSelectedMarker(item);
         mapRef.current?.easeTo({
@@ -148,9 +160,56 @@ export default function Home() {
           duration: 1200,
         });
       });
+
       markersRef.current.push(marker);
     });
-  }, [markers, mapLoaded]);
+  }, [markers, publicMarkers, mapLoaded]);
+
+  // ========================= CARREGAR PÚBLICOS DO SUPABASE =========================
+  const loadPublicMarkers = async () => {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("locations")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar locais públicos.");
+      return [];
+    }
+
+    // Converter cada registro para MarkerType
+    const publicM: MarkerType[] = (data || []).map((loc: any) => ({
+      id: loc.id,
+      lng: loc.lng,
+      lat: loc.lat,
+      title: loc.title || "Local público",
+      description: loc.description || "",
+      mediaType: loc.media_type === "video" ? "video" : "photo",
+      mediaUrl: loc.media_url || "",
+      address: loc.address || "",
+      createdAt: loc.created_at,
+      synced: true, // todos os públicos estão sincronizados
+      userId: undefined,
+      userEmail: undefined,
+    }));
+
+    return publicM;
+  };
+
+  const togglePublicMarkers = async () => {
+    if (showPublic) {
+      // Remove os públicos
+      setPublicMarkers([]);
+      setShowPublic(false);
+    } else {
+      // Carrega e exibe
+      const publics = await loadPublicMarkers();
+      setPublicMarkers(publics);
+      setShowPublic(true);
+    }
+  };
 
   // ========================= GEOLOCATION =========================
   const goToMyLocation = () => {
@@ -202,12 +261,6 @@ export default function Home() {
     );
     setMarkers(updated);
     localStorage.setItem("territorio-markers", JSON.stringify(updated));
-  };
-
-  // ========================= PUBLIC LOCATIONS =========================
-  const goToPublicLocation = (lng: number, lat: number) => {
-    setShowPublicDialog(false);
-    mapRef.current?.flyTo({ center: [lng, lat], zoom: 16, duration: 1500 });
   };
 
   const syncedCount = markers.filter((m) => m.synced).length;
@@ -351,7 +404,7 @@ export default function Home() {
         </>
       )}
 
-      {/* ========== TOP NAVBAR REFORMULADA ========== */}
+      {/* ========== TOP NAVBAR ========== */}
       <div
         style={{
           position: "absolute",
@@ -383,14 +436,18 @@ export default function Home() {
             onOpen={() => setShowLocationsDialog(true)}
           />
           <button
-            onClick={() => setShowPublicDialog(true)}
+            onClick={togglePublicMarkers}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "rgba(0,0,0,0.45)",
+              background: showPublic
+                ? "rgba(59,130,246,0.3)"
+                : "rgba(0,0,0,0.45)",
               backdropFilter: "blur(20px)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: showPublic
+                ? "1px solid #3b82f6"
+                : "1px solid rgba(255,255,255,0.08)",
               borderRadius: 40,
               padding: isMobile ? "8px 12px" : "10px 16px",
               boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
@@ -402,7 +459,9 @@ export default function Home() {
             }}
           >
             <Globe size={16} />
-            <span>Explorar locais</span>
+            <span>
+              {showPublic ? "Ocultar locais públicos" : "Explorar locais"}
+            </span>
           </button>
         </div>
 
@@ -571,12 +630,6 @@ export default function Home() {
           markers={markers}
           onClose={() => setShowLocationsDialog(false)}
           onSynced={handleSynced}
-        />
-      )}
-      {showPublicDialog && (
-        <PublicLocationsDialog
-          onClose={() => setShowPublicDialog(false)}
-          onSelectLocation={goToPublicLocation}
         />
       )}
     </div>
