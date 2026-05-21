@@ -565,7 +565,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                 <div
                   style={{
                     position: "absolute",
-                    top: "100%",
+                    top: "calc(100% + 4px)",
                     left: 0,
                     right: 0,
                     background: "rgba(20,20,25,0.95)",
@@ -575,17 +575,32 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                     maxHeight: 200,
                     overflowY: "auto",
                     zIndex: 10,
-                    marginTop: 4,
+                    boxShadow: "0 10px 20px rgba(0,0,0,0.3)",
                   }}
                 >
                   {loadingGroups && (
-                    <div style={{ padding: 8, color: "#aaa" }}>Buscando...</div>
+                    <div
+                      style={{
+                        padding: 12,
+                        color: "#aaa",
+                        textAlign: "center",
+                      }}
+                    >
+                      Buscando...
+                    </div>
                   )}
                   {!loadingGroups &&
                     existingGroups.length === 0 &&
                     searchTerm.length > 0 && (
-                      <div style={{ padding: 8, color: "#aaa" }}>
-                        Nenhum grupo encontrado. Você pode criar um novo.
+                      // Mensagem movida para fora do dropdown – veja abaixo
+                      <div
+                        style={{
+                          padding: 12,
+                          color: "#aaa",
+                          textAlign: "center",
+                        }}
+                      >
+                        Nenhum grupo encontrado.
                       </div>
                     )}
                   {existingGroups.map((tag) => (
@@ -613,59 +628,88 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
               )}
           </div>
 
-          {/* Se for um grupo existente com senha, pedir a senha */}
-          {selectedGroupInfo && selectedGroupInfo.hasPassword && (
-            <div style={{ marginTop: 12 }}>
-              <input
-                type="password"
-                placeholder="Senha do grupo (necessária para adicionar ao grupo)"
-                value={groupPassword}
-                onChange={(e) => setGroupPassword(e.target.value)}
-                style={{ ...inputStyle, marginBottom: 8 }}
-              />
-            </div>
-          )}
+          {/* Área de mensagem e campos de senha (AGORA A MENSAGEM APARECE EM CIMA) */}
+          <div style={{ marginTop: 12 }}>
+            {/* Mensagem de "nenhum grupo encontrado" – exibida acima dos campos, apenas quando não há sugestões e o usuário está digitando */}
+            {!loadingGroups &&
+              existingGroups.length === 0 &&
+              searchTerm.length > 0 &&
+              groupTag && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#ff9a55",
+                    marginBottom: 8,
+                    padding: "4px 0",
+                  }}
+                >
+                  ✨ Nenhum grupo encontrado. Você pode criar um novo.
+                </div>
+              )}
 
-          {/* Se for um novo grupo (não encontrado) e não for público, opção de criar com senha */}
-          {groupTag && groupTag !== "public" && !selectedGroupInfo && (
-            <div style={{ marginTop: 12 }}>
-              <input
-                type="password"
-                placeholder="Senha do grupo (opcional, mínimo 4 caracteres)"
-                value={groupPassword}
-                onChange={(e) => setGroupPassword(e.target.value)}
-                style={{ ...inputStyle, marginBottom: 8 }}
-              />
-              <input
-                type="password"
-                placeholder="Confirmar senha"
-                value={confirmGroupPassword}
-                onChange={(e) => setConfirmGroupPassword(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-          )}
-
-          <div
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.5)",
-              marginTop: 6,
-            }}
-          >
-            {!groupTag &&
-              "Se você não escolher um grupo, o local será público."}
-            {groupTag === "public" && "Grupo público (qualquer pessoa vê)."}
-            {groupTag &&
-              groupTag !== "public" &&
-              !selectedGroupInfo &&
-              "Novo grupo. Se definir senha, será necessário para adicionar mais locais."}
-            {selectedGroupInfo &&
-              selectedGroupInfo.hasPassword &&
-              "Grupo protegido por senha."}
-            {selectedGroupInfo &&
-              !selectedGroupInfo.hasPassword &&
-              "Grupo aberto (sem senha)."}
+            {!groupTag && (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                🔓 Se você não escolher um grupo, o local será público.
+              </div>
+            )}
+            {groupTag === "public" && (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                🌍 Grupo público – qualquer pessoa pode ver.
+              </div>
+            )}
+            {groupTag && groupTag !== "public" && !selectedGroupInfo && (
+              <>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#ff9a55",
+                    marginBottom: 8,
+                    paddingTop: "1rem",
+                  }}
+                >
+                  🆕 Novo grupo. Opcionalmente, defina uma senha para proteger o
+                  acesso.
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <input
+                    type="password"
+                    placeholder="Senha do grupo (opcional, mínimo 4 caracteres)"
+                    value={groupPassword}
+                    onChange={(e) => setGroupPassword(e.target.value)}
+                    style={{ ...inputStyle, marginBottom: 8 }}
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirmar senha"
+                    value={confirmGroupPassword}
+                    onChange={(e) => setConfirmGroupPassword(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              </>
+            )}
+            {selectedGroupInfo && selectedGroupInfo.hasPassword && (
+              <>
+                <div
+                  style={{ fontSize: 12, color: "#ff9a55", marginBottom: 8 }}
+                >
+                  🔒 Este grupo exige senha para adicionar novos locais.
+                </div>
+                <input
+                  type="password"
+                  placeholder="Senha do grupo"
+                  value={groupPassword}
+                  onChange={(e) => setGroupPassword(e.target.value)}
+                  style={inputStyle}
+                />
+              </>
+            )}
+            {selectedGroupInfo && !selectedGroupInfo.hasPassword && (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                🔓 Grupo aberto (sem senha). Qualquer pessoa pode adicionar
+                locais.
+              </div>
+            )}
           </div>
         </div>
 
