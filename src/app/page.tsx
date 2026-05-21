@@ -12,12 +12,14 @@ import {
   PlusIcon,
   MinusIcon,
   MapPin,
+  Globe,
 } from "lucide-react";
 import { MarkerType } from "@/types/marker";
 import AddLocationModal from "@/components/AddLocationModal";
 import MarkerCard from "@/components/MarkerCard";
 import LocationsDialog from "@/components/LocationsDialog";
 import BottomLocais from "@/components/ButtonLocais";
+import PublicLocationsDialog from "@/components/PublicLocations";
 
 export default function Home() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -32,6 +34,7 @@ export default function Home() {
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLocationsDialog, setShowLocationsDialog] = useState(false);
+  const [showPublicDialog, setShowPublicDialog] = useState(false);
   const [selectingLocation, setSelectingLocation] = useState(false);
   const [pendingCoords, setPendingCoords] = useState<{
     lng: number;
@@ -201,6 +204,12 @@ export default function Home() {
     localStorage.setItem("territorio-markers", JSON.stringify(updated));
   };
 
+  // ========================= PUBLIC LOCATIONS =========================
+  const goToPublicLocation = (lng: number, lat: number) => {
+    setShowPublicDialog(false);
+    mapRef.current?.flyTo({ center: [lng, lat], zoom: 16, duration: 1500 });
+  };
+
   const syncedCount = markers.filter((m) => m.synced).length;
   const unsyncedCount = markers.filter((m) => !m.synced).length;
 
@@ -342,7 +351,7 @@ export default function Home() {
         </>
       )}
 
-      {/* ========== TOP NAVBAR REFORMULADA (responsiva) ========== */}
+      {/* ========== TOP NAVBAR REFORMULADA ========== */}
       <div
         style={{
           position: "absolute",
@@ -351,14 +360,21 @@ export default function Home() {
           right: 16,
           zIndex: 30,
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "space-between",
           gap: 12,
           pointerEvents: "none",
         }}
       >
-        {/* Esquerda: botão de locais */}
-        <div style={{ pointerEvents: "auto" }}>
+        {/* Esquerda: dois botões empilhados */}
+        <div
+          style={{
+            pointerEvents: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
           <BottomLocais
             total={markers.length}
             synced={syncedCount}
@@ -366,6 +382,28 @@ export default function Home() {
             isMobile={isMobile}
             onOpen={() => setShowLocationsDialog(true)}
           />
+          <button
+            onClick={() => setShowPublicDialog(true)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "rgba(0,0,0,0.45)",
+              backdropFilter: "blur(20px)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 40,
+              padding: isMobile ? "8px 12px" : "10px 16px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              cursor: "pointer",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: isMobile ? 12 : 14,
+              transition: "all 0.2s",
+            }}
+          >
+            <Globe size={16} />
+            <span>Explorar locais</span>
+          </button>
         </div>
 
         {/* Centro: botões de estilo do mapa */}
@@ -472,7 +510,6 @@ export default function Home() {
               justifyContent: "center",
               cursor: "pointer",
               boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              transition: "all 0.2s",
             }}
           >
             <LocateFixed size={18} />
@@ -492,7 +529,6 @@ export default function Home() {
               justifyContent: "center",
               cursor: "pointer",
               boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              transition: "all 0.2s",
             }}
           >
             <Plus size={20} />
@@ -535,6 +571,12 @@ export default function Home() {
           markers={markers}
           onClose={() => setShowLocationsDialog(false)}
           onSynced={handleSynced}
+        />
+      )}
+      {showPublicDialog && (
+        <PublicLocationsDialog
+          onClose={() => setShowPublicDialog(false)}
+          onSelectLocation={goToPublicLocation}
         />
       )}
     </div>
