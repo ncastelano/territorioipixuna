@@ -9,7 +9,7 @@ export type ProfileFormInput = {
   bio: string;
   region: string;
   image_url: string;
-  username?: string | null; // novo campo
+  username?: string | null;
 };
 
 function getAuthErrorMessage(message: string) {
@@ -52,18 +52,24 @@ export async function signIn(email: string, password: string) {
 export async function signUp(
   email: string,
   password: string,
-  fullName: string
+  fullName: string,
+  username?: string // ← quarto argumento opcional
 ) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName } },
+    options: {
+      data: {
+        full_name: fullName,
+      },
+    },
   });
 
   if (error) throw new Error(getAuthErrorMessage(error.message));
 
-  // Salva o perfil automaticamente (com valores padrão)
+  // Com a confirmação de email desativada no Dashboard do Supabase,
+  // o `data.session` estará presente imediatamente após o cadastro.
   if (data.user && data.session) {
     await saveProfile(
       data.user.id,
@@ -71,9 +77,9 @@ export async function signUp(
         full_name: fullName,
         role: "Agente comunitário",
         bio: "",
-        region: "AM", // será atualizado depois via geolocalização na página de perfil
+        region: "AM",
         image_url: "",
-        username: null,
+        username: username || null,
       },
       data.user.email ?? email
     );
@@ -124,7 +130,7 @@ export async function saveProfile(
     bio: input.bio.trim() || null,
     region: input.region.trim() || "AM",
     image_url: input.image_url.trim() || null,
-    username: input.username?.trim() || null, // salva username (pode ser null)
+    username: input.username?.trim() || null,
     updated_at: new Date().toISOString(),
   };
 
@@ -145,17 +151,14 @@ export async function uploadProfileImage(
   const supabase = getSupabaseClient();
   const extension = file.name.split(".").pop() || "jpg";
   const path = `${userId}/${Date.now()}.${extension.toLowerCase()}`;
-
   const { error } = await supabase.storage
     .from("profile-images")
     .upload(path, file, { cacheControl: "3600", upsert: true });
   if (error) throw new Error(error.message);
-
   const { data } = supabase.storage.from("profile-images").getPublicUrl(path);
   return data.publicUrl;
 }
 
-// Função utilitária para obter estado (UF) a partir de coordenadas
 export async function getStateFromCoords(
   lat: number,
   lng: number
@@ -169,7 +172,6 @@ export async function getStateFromCoords(
       f.place_type.includes("region")
     );
     if (region && region.properties?.short_code) {
-      // short_code ex: "BR-AM" -> "AM"
       return region.properties.short_code.split("-")[1];
     }
     return null;

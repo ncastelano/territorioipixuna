@@ -46,6 +46,7 @@ export default function CadastrarPage() {
   const router = useRouter();
 
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -65,7 +66,7 @@ export default function CadastrarPage() {
     setIsSubmitting(true);
 
     try {
-      await signUp(email.trim(), password, fullName.trim());
+      await signUp(email.trim(), password, fullName.trim(), username.trim());
       await signIn(email.trim(), password);
       router.push("/");
     } catch (error) {
@@ -125,7 +126,7 @@ export default function CadastrarPage() {
         }}
         className="cadastro-container"
       >
-        {/* FORMULÁRIO DE CADASTRO – ocupa toda largura no mobile */}
+        {/* FORMULÁRIO DE CADASTRO */}
         <div
           style={{
             width: "100%",
@@ -160,9 +161,17 @@ export default function CadastrarPage() {
             </div>
 
             <input
-              placeholder="Nome"
+              placeholder="Nome completo"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              disabled={isSubmitting}
+              style={inputStyle}
+            />
+
+            <input
+              placeholder="Apelido (username)"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               disabled={isSubmitting}
               style={inputStyle}
             />
@@ -230,7 +239,7 @@ export default function CadastrarPage() {
           </form>
         </div>
 
-        {/* SEÇÃO DE APRESENTAÇÃO – oculta no mobile */}
+        {/* SEÇÃO DE APRESENTAÇÃO (desktop) */}
         <div
           className="presentation-section"
           style={{
@@ -242,6 +251,7 @@ export default function CadastrarPage() {
             gap: "1.5rem",
           }}
         >
+          {/* ... conteúdo igual ao original ... */}
           <div>
             <div
               style={{
@@ -342,7 +352,7 @@ export default function CadastrarPage() {
         </div>
       </div>
 
-      {/* RODAPÉ FIXO COM ESPAÇAMENTO */}
+      {/* RODAPÉ FIXO */}
       <div
         style={{
           position: "fixed",
