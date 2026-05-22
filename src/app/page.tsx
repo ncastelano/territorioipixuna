@@ -25,6 +25,15 @@ import LocationsDialog from "@/components/LocationsDialog";
 import BottomLocais from "@/components/ButtonLocais";
 import { getSupabaseClient } from "@/lib/supabase";
 
+const iconSVG: Record<string, string> = {
+  mountain: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 10H6z"/><path d="M4 14h16"/><path d="M12 14v7"/></svg>`,
+  tree: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6h3l-3 4 1 6h-8l1-6-3-4h3z"/><path d="M12 16v4"/></svg>`,
+  water: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="M4 12h16"/><path d="M12 22v-6"/><path d="M2 10h20"/><path d="M4 14h16"/><path d="M8 18h8"/></svg>`,
+  fire: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+  danger: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+  home: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6v9a2 2 0 0 1-2 2h-5v-7h-4v7H5a2 2 0 0 1-2-2z"/></svg>`,
+};
+
 export default function Home() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -56,7 +65,6 @@ export default function Home() {
     lng: number;
     lat: number;
   } | null>(null);
-  // Estado para resultados da busca local por nome
   const [localSearchResults, setLocalSearchResults] = useState<
     MarkerType[] | null
   >(null);
@@ -122,7 +130,29 @@ export default function Home() {
     }
   }, []);
 
-  // CARREGAR PÚBLICOS NA INICIALIZAÇÃO (torna‑se função reutilizável)
+  // ======================== CONVERSÃO ========================
+  const convertToMarkerType = (loc: any): MarkerType => ({
+    id: loc.id,
+    lng: loc.lng,
+    lat: loc.lat,
+    title: loc.title || "Local",
+    description: loc.description || "",
+    mediaType: loc.media_type === "video" ? "video" : "photo",
+    mediaUrl: loc.media_url || "",
+    address: loc.address || "",
+    createdAt: loc.created_at,
+    synced: true,
+    userId: loc.user_id,
+    userEmail: loc.user_email,
+    groupTag: loc.group_tag,
+    groupPasswordHash: loc.group_password_hash,
+    creatorName: loc.creator_name,
+    creatorAvatar: loc.creator_avatar,
+    iconType: loc.icon_type,
+    videoThumbnail: loc.video_thumbnail,
+  });
+
+  // ======================== CARREGAR PÚBLICOS + REALTIME ========================
   const loadPublicMarkersOnInit = async () => {
     if (loadingInitial) return;
     setLoadingInitial(true);
@@ -138,51 +168,124 @@ export default function Home() {
       setLoadingInitial(false);
       return;
     }
-
-    const publicM: MarkerType[] = (data || []).map((loc: any) => ({
-      id: loc.id,
-      lng: loc.lng,
-      lat: loc.lat,
-      title: loc.title || "Local público",
-      description: loc.description || "",
-      mediaType: loc.media_type === "video" ? "video" : "photo",
-      mediaUrl: loc.media_url || "",
-      address: loc.address || "",
-      createdAt: loc.created_at,
-      synced: true,
-      userId: loc.user_id,
-      userEmail: loc.user_email,
-      groupTag: loc.group_tag || "public",
-      groupPasswordHash: loc.group_password_hash,
-      creatorName: loc.creator_name,
-      creatorAvatar: loc.creator_avatar,
-      iconType: loc.icon_type,
-      videoThumbnail: loc.video_thumbnail,
-    }));
+    const publicM = (data || []).map(convertToMarkerType);
     setPublicMarkers(publicM);
     setLoadingInitial(false);
   };
 
-  // Carregar públicos automaticamente na primeira vez
   useEffect(() => {
     loadPublicMarkersOnInit();
+
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel("locations-changes")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "locations" },
+        (payload) => {
+          const newMarker = convertToMarkerType(payload.new);
+          if (!payload.new.group_tag || payload.new.group_tag === "public") {
+            setPublicMarkers((prev) => [newMarker, ...prev]);
+          } else {
+            setGroupMarkers((prev) => [newMarker, ...prev]);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "locations" },
+        (payload) => {
+          const updatedMarker = convertToMarkerType(payload.new);
+          setPublicMarkers((prev) =>
+            prev.map((m) => (m.id === updatedMarker.id ? updatedMarker : m))
+          );
+          setGroupMarkers((prev) =>
+            prev.map((m) => (m.id === updatedMarker.id ? updatedMarker : m))
+          );
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  // ======================== RENDER MARCADORES (considera busca local) ========================
+  // ======================== SINCRONIZAR COM SUPABASE ========================
+  const syncMarkerToSupabase = async (marker: MarkerType): Promise<boolean> => {
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.from("locations").insert({
+        title: marker.title,
+        description: marker.description,
+        address: marker.address,
+        lng: marker.lng,
+        lat: marker.lat,
+        media_url: marker.mediaUrl,
+        media_type: marker.mediaType,
+        group_tag: marker.groupTag === "public" ? null : marker.groupTag,
+        group_password_hash: marker.groupPasswordHash || null,
+        user_id: marker.userId,
+        user_email: marker.userEmail,
+        icon_type: marker.iconType || null,
+        creator_name: marker.creatorName || null,
+        creator_avatar: marker.creatorAvatar || null,
+        video_thumbnail: marker.videoThumbnail || null,
+      });
+      if (error) {
+        console.error("Erro ao sincronizar:", error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  };
+
+  // ======================== SAVE MARKER (com remoção do local após sincronizar) ========================
+  const handleSaveMarker = async (marker: MarkerType) => {
+    // Adiciona localmente (não sincronizado)
+    const updated = [...markers, marker];
+    setMarkers(updated);
+    localStorage.setItem("territorio-markers", JSON.stringify(updated));
+    setShowAddModal(false);
+    setPendingCoords(null);
+
+    // Tenta sincronizar
+    const success = await syncMarkerToSupabase(marker);
+    if (success) {
+      // Remove o marcador local (pois será mostrado via Supabase)
+      const withoutLocal = updated.filter((m) => m.id !== marker.id);
+      setMarkers(withoutLocal);
+      localStorage.setItem("territorio-markers", JSON.stringify(withoutLocal));
+
+      // Adiciona manualmente ao array apropriado para exibição imediata
+      const syncedMarker = { ...marker, synced: true };
+      if (!marker.groupTag || marker.groupTag === "public") {
+        setPublicMarkers((prev) => [syncedMarker, ...prev]);
+      } else {
+        setGroupMarkers((prev) => [syncedMarker, ...prev]);
+      }
+      alert("Local salvo e sincronizado com a nuvem!");
+    } else {
+      alert(
+        "Local salvo localmente, mas a sincronização falhou. Tente novamente mais tarde."
+      );
+    }
+  };
+
+  // ======================== RENDER MARCADORES (apenas locais não sincronizados + públicos + grupos) ========================
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
 
-    // Determina quais marcadores serão exibidos
     let allMarkers: MarkerType[];
     if (localSearchResults !== null) {
-      // Modo de busca local: exibe apenas os resultados filtrados
       allMarkers = localSearchResults;
     } else {
-      // Modo normal
       allMarkers = [
-        ...markers,
+        ...markers, // apenas locais não sincronizados (synced == false)
         ...(showPublicMarkers ? publicMarkers : []),
         ...groupMarkers.filter((g) => !g.groupPasswordHash),
         ...groupMarkers.filter(
@@ -208,6 +311,17 @@ export default function Home() {
 
       if (item.mediaUrl && item.mediaType === "photo") {
         el.style.backgroundImage = `url(${item.mediaUrl})`;
+      } else if (item.iconType && iconSVG[item.iconType]) {
+        el.style.background = borderColor;
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.innerHTML = iconSVG[item.iconType];
+        const svg = el.querySelector("svg");
+        if (svg) {
+          svg.style.width = "24px";
+          svg.style.height = "24px";
+        }
       } else {
         el.style.background = borderColor;
         el.style.display = "flex";
@@ -242,7 +356,7 @@ export default function Home() {
     localSearchResults,
   ]);
 
-  // ======================== RENDER PINS DE GRUPOS COM SENHA NÃO REVELADOS (CADEADO) ========================
+  // ======================== PINS CADEADO ========================
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     groupMarkers.forEach((item) => {
@@ -306,30 +420,7 @@ export default function Home() {
       alert("Erro ao carregar locais.");
       return { groupMarkers: [] };
     }
-    const groupM: MarkerType[] = [];
-    (data || []).forEach((loc: any) => {
-      const marker: MarkerType = {
-        id: loc.id,
-        lng: loc.lng,
-        lat: loc.lat,
-        title: loc.title || "Local",
-        description: loc.description || "",
-        mediaType: loc.media_type === "video" ? "video" : "photo",
-        mediaUrl: loc.media_url || "",
-        address: loc.address || "",
-        createdAt: loc.created_at,
-        synced: true,
-        userId: loc.user_id,
-        userEmail: loc.user_email,
-        groupTag: loc.group_tag,
-        groupPasswordHash: loc.group_password_hash,
-        creatorName: loc.creator_name,
-        creatorAvatar: loc.creator_avatar,
-        iconType: loc.icon_type,
-        videoThumbnail: loc.video_thumbnail,
-      };
-      groupM.push(marker);
-    });
+    const groupM = (data || []).map(convertToMarkerType);
     if (groupTag !== "public" && groupTag !== "") {
       const hasAnyHash = groupM.some((m) => m.groupPasswordHash);
       if (hasAnyHash) {
@@ -359,15 +450,13 @@ export default function Home() {
     return { groupMarkers: groupM };
   };
 
-  // ======================== BUSCA LOCAL POR NOME (filtra os marcadores já carregados) ========================
+  // ======================== BUSCA LOCAL POR NOME ========================
   const performLocalTitleSearch = (titleTerm: string) => {
     if (!titleTerm.trim()) {
-      // Limpa a busca local
       setLocalSearchResults(null);
       setCurrentGroupName(null);
       return;
     }
-    // Coleta todos os marcadores atualmente visíveis (base normal)
     const currentMarkers = [
       ...markers,
       ...(showPublicMarkers ? publicMarkers : []),
@@ -388,18 +477,6 @@ export default function Home() {
     setCurrentGroupName(`nome: ${titleTerm.trim()}`);
   };
 
-  // ======================== LIMPAR BUSCA LOCAL ========================
-  const clearLocalSearch = async () => {
-    setLocalSearchResults(null);
-    setCurrentGroupName(null);
-    setSearchTitle("");
-    // Recarrega públicos caso eles tenham sido desativados por alguma ação anterior
-    if (publicMarkers.length === 0 && !showPublicMarkers) {
-      await loadPublicMarkersOnInit();
-      setShowPublicMarkers(true);
-    }
-  };
-
   const handleGroupSearch = async () => {
     if (!searchGroup.trim()) {
       alert("Digite um nome de grupo (ex: 'equipe', 'expedicao1')");
@@ -407,7 +484,6 @@ export default function Home() {
     }
     setLoadingGroup(true);
     const result = await loadMarkersByGroup(searchGroup.trim(), searchPassword);
-    // Limpa qualquer busca local ativa
     setLocalSearchResults(null);
     setGroupMarkers(result.groupMarkers);
     setPublicMarkers([]);
@@ -434,7 +510,6 @@ export default function Home() {
   };
 
   const clearGroups = async () => {
-    // Limpa grupos e busca local
     setGroupMarkers([]);
     setRevealedGroupIds(new Set());
     setLocalSearchResults(null);
@@ -442,14 +517,12 @@ export default function Home() {
     setSearchGroup("");
     setSearchPassword("");
     setSearchTitle("");
-    // Recarrega os públicos originais
     await loadPublicMarkersOnInit();
     setShowPublicMarkers(true);
   };
 
   const togglePublicMarkers = () => {
     setShowPublicMarkers((prev) => !prev);
-    // Ao alternar o público, limpa a busca local (opcional, mas evita confusão)
     if (localSearchResults !== null) {
       setLocalSearchResults(null);
       setCurrentGroupName(null);
@@ -483,16 +556,6 @@ export default function Home() {
     setShowAddModal(true);
   };
 
-  // SAVE MARKER
-  const handleSaveMarker = (marker: MarkerType) => {
-    const updated = [...markers, marker];
-    setMarkers(updated);
-    localStorage.setItem("territorio-markers", JSON.stringify(updated));
-    setShowAddModal(false);
-    setPendingCoords(null);
-  };
-
-  // REMOVE MARKER
   const removeMarker = (id: string) => {
     const updated = markers.filter((item) => item.id !== id);
     setMarkers(updated);
@@ -500,8 +563,8 @@ export default function Home() {
     setSelectedMarker(null);
   };
 
-  // SYNC UPDATE
   const handleSynced = (id: string) => {
+    // Usado apenas pelo LocationsDialog (sincronização manual)
     const updated = markers.map((item) =>
       item.id === id ? { ...item, synced: true } : item
     );
@@ -512,6 +575,7 @@ export default function Home() {
   const syncedCount = markers.filter((m) => m.synced).length;
   const unsyncedCount = markers.filter((m) => !m.synced).length;
 
+  // ======================== JSX (mantido idêntico ao original) ========================
   return (
     <div
       style={{
@@ -524,7 +588,6 @@ export default function Home() {
     >
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* SELECT LOCATION MODE */}
       {selectingLocation && (
         <>
           <div
@@ -649,7 +712,6 @@ export default function Home() {
         </>
       )}
 
-      {/* TOP NAVBAR */}
       <div
         style={{
           position: "absolute",
@@ -733,7 +795,6 @@ export default function Home() {
             <Cloudy size={16} />
             <span>Público</span>
           </button>
-          {/* Botão Limpar aparece se houver resultados de busca, grupos ativos ou busca local ativa */}
           {(groupMarkers.length > 0 ||
             (publicMarkers.length === 0 && !showPublicMarkers) ||
             localSearchResults !== null) && (
@@ -760,7 +821,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Centro: botões de estilo */}
         <div
           style={{
             pointerEvents: "auto",
@@ -837,7 +897,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Direita: localização e adicionar */}
         <div
           style={{
             pointerEvents: "auto",
@@ -887,7 +946,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* MODAL DE EXPLORAÇÃO COM DUAS BUSCAS */}
       {showExplorer && (
         <div
           style={{
@@ -927,7 +985,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* SEÇÃO: BUSCAR POR NOME */}
           <div style={{ marginBottom: 24 }}>
             <div
               style={{
@@ -985,7 +1042,6 @@ export default function Home() {
             }}
           />
 
-          {/* SEÇÃO: BUSCAR POR GRUPO */}
           <div>
             <div
               style={{
@@ -1064,7 +1120,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* CUSTOM ZOOM CONTROLS */}
       <div className="custom-zoom-controls">
         <button onClick={zoomIn} className="zoom-btn">
           <PlusIcon size={18} />
@@ -1075,7 +1130,6 @@ export default function Home() {
         </button>
       </div>
 
-      {/* MODAIS */}
       {showAddModal && pendingCoords && (
         <AddLocationModal
           lng={pendingCoords.lng}

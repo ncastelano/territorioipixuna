@@ -4,6 +4,24 @@
 import { Cloud, Cloudy, Smartphone, Upload, X } from "lucide-react";
 import { MarkerType } from "@/types/marker";
 import { getSupabaseClient } from "@/lib/supabase";
+import {
+  Mountain,
+  TreePine,
+  Waves,
+  Flame,
+  AlertTriangle,
+  Home,
+} from "lucide-react";
+
+// Mapeamento de ícones para exibição (fallback)
+const ICON_MAP: Record<string, React.ElementType> = {
+  mountain: Mountain,
+  tree: TreePine,
+  water: Waves,
+  fire: Flame,
+  danger: AlertTriangle,
+  home: Home,
+};
 
 type Props = {
   markers: MarkerType[];
@@ -27,6 +45,10 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
         group_password_hash: marker.groupPasswordHash || null,
         user_id: marker.userId,
         user_email: marker.userEmail,
+        icon_type: marker.iconType || null,
+        creator_name: marker.creatorName || null,
+        creator_avatar: marker.creatorAvatar || null,
+        video_thumbnail: marker.videoThumbnail || null,
       });
 
       if (error) {
@@ -48,6 +70,14 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
 
   const unsyncedCount = markers.filter((m) => !m.synced).length;
   const syncedCount = markers.length - unsyncedCount;
+
+  // Função para obter o componente de ícone baseado no iconType
+  const getIconComponent = (iconType?: string) => {
+    if (iconType && ICON_MAP[iconType]) {
+      return ICON_MAP[iconType];
+    }
+    return Home; // ícone padrão
+  };
 
   return (
     <div
@@ -130,150 +160,192 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
             gap: 16,
           }}
         >
-          {markers.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                background: "rgba(255,255,255,0.04)",
-                borderRadius: 22,
-                padding: 16,
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div style={{ display: "flex", gap: 14 }}>
-                {/* MEDIA */}
-                <div
-                  style={{
-                    width: 120,
-                    height: 120,
-                    borderRadius: 18,
-                    overflow: "hidden",
-                    background: "#111",
-                    flexShrink: 0,
-                  }}
-                >
-                  {item.mediaType === "photo" ? (
-                    <img
-                      src={item.mediaUrl}
-                      alt="preview"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <video
-                      src={item.mediaUrl}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  )}
-                </div>
+          {markers.map((item) => {
+            const IconComponent = getIconComponent(item.iconType);
+            const hasValidMedia = item.mediaUrl && item.mediaUrl.trim() !== "";
 
-                {/* CONTENT */}
-                <div style={{ flex: 1 }}>
+            return (
+              <div
+                key={item.id}
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  borderRadius: 22,
+                  padding: 16,
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", gap: 14 }}>
+                  {/* MEDIA ou ÍCONE */}
                   <div
                     style={{
+                      width: 120,
+                      height: 120,
+                      borderRadius: 18,
+                      overflow: "hidden",
+                      background: "#111",
+                      flexShrink: 0,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      justifyContent: "center",
                     }}
                   >
-                    <div
-                      style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}
-                    >
-                      {item.title}
-                    </div>
-                    {item.groupTag && item.groupTag !== "public" && (
-                      <div
+                    {hasValidMedia && item.mediaType === "photo" ? (
+                      <img
+                        src={item.mediaUrl}
+                        alt="preview"
                         style={{
-                          fontSize: 11,
-                          padding: "2px 8px",
-                          borderRadius: 20,
-                          background: "rgba(139,92,246,0.2)",
-                          color: "#a78bfa",
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
                         }}
-                      >
-                        🔒 {item.groupTag}
-                      </div>
-                    )}
-                    {item.groupTag === "public" && (
-                      <div
+                      />
+                    ) : hasValidMedia && item.mediaType === "video" ? (
+                      <video
+                        src={item.mediaUrl}
                         style={{
-                          fontSize: 11,
-                          padding: "2px 8px",
-                          borderRadius: 20,
-                          background: "rgba(16,185,129,0.2)",
-                          color: "#10b981",
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
                         }}
-                      >
-                        🌍 Público
-                      </div>
+                      />
+                    ) : (
+                      <IconComponent size={48} color="#888" strokeWidth={1.5} />
                     )}
-                  </div>
-                  <div style={{ color: "rgba(255,255,255,0.6)", marginTop: 6 }}>
-                    {item.address}
-                  </div>
-                  <div
-                    style={{ color: "rgba(255,255,255,0.75)", marginTop: 10 }}
-                  >
-                    {item.description}
                   </div>
 
-                  {/* STATUS - CORES TROCADAS */}
-                  <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+                  {/* CONTENT */}
+                  <div style={{ flex: 1 }}>
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        color: "#3b82f6", // Azul para "Local"
+                        justifyContent: "space-between",
                       }}
                     >
-                      <Smartphone size={16} />
-                      <span>Local</span>
+                      <div
+                        style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}
+                      >
+                        {item.title}
+                      </div>
+                      {item.groupTag && item.groupTag !== "public" && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            padding: "2px 8px",
+                            borderRadius: 20,
+                            background: "rgba(139,92,246,0.2)",
+                            color: "#a78bfa",
+                          }}
+                        >
+                          🔒 {item.groupTag}
+                        </div>
+                      )}
+                      {item.groupTag === "public" && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            padding: "2px 8px",
+                            borderRadius: 20,
+                            background: "rgba(16,185,129,0.2)",
+                            color: "#10b981",
+                          }}
+                        >
+                          🌍 Público
+                        </div>
+                      )}
                     </div>
                     <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        color: item.synced ? "#10b981" : "#ef4444", // Verde para sincronizado
-                      }}
+                      style={{ color: "rgba(255,255,255,0.6)", marginTop: 6 }}
                     >
-                      <Cloudy size={16} />
-                      <span>
-                        {item.synced ? "sincronizado" : "não sincronizado"}
-                      </span>
+                      {item.address}
                     </div>
+                    <div
+                      style={{ color: "rgba(255,255,255,0.75)", marginTop: 10 }}
+                    >
+                      {item.description}
+                    </div>
+
+                    {/* STATUS */}
+                    <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          color: "#3b82f6",
+                        }}
+                      >
+                        <Smartphone size={16} />
+                        <span>Local</span>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          color: item.synced ? "#10b981" : "#ef4444",
+                        }}
+                      >
+                        <Cloudy size={16} />
+                        <span>
+                          {item.synced ? "sincronizado" : "não sincronizado"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* EXIBIR CRIADOR (opcional) */}
+                    {item.creatorName && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.5)",
+                        }}
+                      >
+                        {item.creatorAvatar ? (
+                          <img
+                            src={item.creatorAvatar}
+                            alt=""
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: "50%",
+                            }}
+                          />
+                        ) : (
+                          <span>👤</span>
+                        )}
+                        <span>{item.creatorName}</span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* ACTION BUTTON (upload) */}
+                  {!item.synced && (
+                    <button
+                      onClick={() => uploadToSupabase(item)}
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 16,
+                        border: 0,
+                        background:
+                          "linear-gradient(to right, #3b82f6, #2563eb)",
+                        color: "#fff",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Upload size={18} />
+                    </button>
+                  )}
                 </div>
-
-                {/* ACTION */}
-                {!item.synced && (
-                  <button
-                    onClick={() => uploadToSupabase(item)}
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 16,
-                      border: 0,
-                      background: "linear-gradient(to right, #3b82f6, #2563eb)",
-                      color: "#fff",
-                      cursor: "pointer",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Upload size={18} />
-                  </button>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div style={{ height: 150 }} />
         </div>
       </div>
