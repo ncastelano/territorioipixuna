@@ -592,6 +592,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           </button>
         </div>
 
+        {/* Conteúdo principal - sem paddingBottom extra */}
         <div
           style={{
             padding: "20px 24px",
@@ -1019,50 +1020,51 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
               </div>
             )}
           </div>
+
+          {/* Botões de ação */}
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              marginTop: 0, // sem margem extra
+            }}
+          >
+            <button
+              onClick={onClose}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: 40,
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "transparent",
+                color: "#fff",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: 40,
+                border: "none",
+                background: "linear-gradient(135deg, #10b981, #059669)",
+                color: "#fff",
+                fontWeight: 600,
+                cursor: saving ? "wait" : "pointer",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? "Salvando..." : "Salvar local"}
+            </button>
+          </div>
         </div>
 
-        {/* Botões de ação */}
-        <div
-          style={{
-            padding: "16px 24px",
-            display: "flex",
-            gap: 12,
-          }}
-        >
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: "12px",
-              borderRadius: 40,
-              border: "1px solid rgba(255,255,255,0.15)",
-              background: "transparent",
-              color: "#fff",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              flex: 1,
-              padding: "12px",
-              borderRadius: 40,
-              border: "none",
-              background: "linear-gradient(135deg, #10b981, #059669)",
-              color: "#fff",
-              fontWeight: 600,
-              cursor: saving ? "wait" : "pointer",
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            {saving ? "Salvando..." : "Salvar local"}
-          </button>
-        </div>
-        {/* Espaço extra de 300px para evitar sobreposição com a navbar */}
+        {/* Espaço extra de 300px APENAS abaixo dos botões (dentro do scroll) */}
         <div style={{ height: 300 }} />
       </div>
 
@@ -1204,7 +1206,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
               >
                 <X size={20} /> Cancelar
               </button>
-              <div style={{ height: 400 }} />
             </div>
           </div>
         </div>
