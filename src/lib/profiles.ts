@@ -53,7 +53,7 @@ export async function signUp(
   email: string,
   password: string,
   fullName: string,
-  username?: string // ← quarto argumento opcional
+  username?: string
 ) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.signUp({
@@ -68,8 +68,6 @@ export async function signUp(
 
   if (error) throw new Error(getAuthErrorMessage(error.message));
 
-  // Com a confirmação de email desativada no Dashboard do Supabase,
-  // o `data.session` estará presente imediatamente após o cadastro.
   if (data.user && data.session) {
     await saveProfile(
       data.user.id,
@@ -179,4 +177,40 @@ export async function getStateFromCoords(
     console.error("Erro ao buscar estado:", error);
     return null;
   }
+}
+
+// ======================== RECENT GROUPS ========================
+
+// Salva um grupo na lista de recentes (até 5)
+export async function addRecentGroup(userId: string, groupTag: string) {
+  const supabase = getSupabaseClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("recent_groups")
+    .eq("id", userId)
+    .single();
+
+  let recents: string[] = profile?.recent_groups || [];
+  // Remove se já existir e adiciona no início
+  recents = recents.filter((tag: string) => tag !== groupTag); // ← tipo explícito
+  recents = [groupTag, ...recents].slice(0, 5);
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ recent_groups: recents })
+    .eq("id", userId);
+
+  if (error) console.error("Erro ao salvar grupo recente", error);
+}
+
+// Busca os grupos recentes do usuário
+export async function getRecentGroups(userId: string): Promise<string[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("recent_groups")
+    .eq("id", userId)
+    .single();
+  if (error) return [];
+  return data?.recent_groups || [];
 }
