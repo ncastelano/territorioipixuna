@@ -766,7 +766,7 @@ export default function Home() {
           >
             <Search size={16} />
             <span>
-              {currentGroupName ? `Grupo: ${currentGroupName}` : "Procurar"}
+              {currentGroupName ? ` ${currentGroupName}` : "Procurar"}
             </span>
           </button>
           <button
