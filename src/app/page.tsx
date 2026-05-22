@@ -1,5 +1,4 @@
 // app/page.tsx
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -40,11 +39,14 @@ export default function Home() {
   const [revealedGroupIds, setRevealedGroupIds] = useState<Set<string>>(
     new Set()
   );
+  const [showPublicMarkers, setShowPublicMarkers] = useState(true);
   const [showExplorer, setShowExplorer] = useState(false);
   const [searchGroup, setSearchGroup] = useState("");
   const [searchPassword, setSearchPassword] = useState("");
+  const [searchTitle, setSearchTitle] = useState("");
   const [loadingGroup, setLoadingGroup] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(false);
+  const [currentGroupName, setCurrentGroupName] = useState<string | null>(null);
   const [selectedMarker, setSelectedMarker] = useState<MarkerType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLocationsDialog, setShowLocationsDialog] = useState(false);
@@ -156,7 +158,7 @@ export default function Home() {
     loadPublicMarkersOnInit();
   }, []);
 
-  // RENDER LOCAIS LOCAIS + PÚBLICOS + GRUPOS REVELADOS
+  // ======================== RENDER MARCADORES ========================
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     markersRef.current.forEach((marker) => marker.remove());
@@ -164,8 +166,11 @@ export default function Home() {
 
     const allMarkers = [
       ...markers,
-      ...publicMarkers,
-      ...groupMarkers.filter((g) => revealedGroupIds.has(g.id)),
+      ...(showPublicMarkers ? publicMarkers : []),
+      ...groupMarkers.filter((g) => !g.groupPasswordHash),
+      ...groupMarkers.filter(
+        (g) => g.groupPasswordHash && revealedGroupIds.has(g.id)
+      ),
     ];
 
     allMarkers.forEach((item) => {
@@ -203,7 +208,6 @@ export default function Home() {
       const marker = new mapboxgl.Marker(el)
         .setLngLat([item.lng, item.lat])
         .addTo(mapRef.current!);
-
       el.addEventListener("click", () => {
         setSelectedMarker(item);
         mapRef.current?.easeTo({
@@ -212,16 +216,24 @@ export default function Home() {
           duration: 1200,
         });
       });
-
       markersRef.current.push(marker);
     });
-  }, [markers, publicMarkers, groupMarkers, revealedGroupIds, mapLoaded]);
+  }, [
+    markers,
+    publicMarkers,
+    groupMarkers,
+    revealedGroupIds,
+    showPublicMarkers,
+    mapLoaded,
+  ]);
 
-  // RENDER PINS DE GRUPOS NÃO REVELADOS (CADEADO)
+  // ======================== RENDER PINS DE GRUPOS COM SENHA NÃO REVELADOS (CADEADO) ========================
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     groupMarkers.forEach((item) => {
+      if (!item.groupPasswordHash) return;
       if (revealedGroupIds.has(item.id)) return;
+
       const el = document.createElement("div");
       el.style.width = "36px";
       el.style.height = "36px";
@@ -239,7 +251,6 @@ export default function Home() {
       const marker = new mapboxgl.Marker(el)
         .setLngLat([item.lng, item.lat])
         .addTo(mapRef.current!);
-
       el.addEventListener("click", async () => {
         const groupTag = item.groupTag;
         let password =
@@ -264,30 +275,24 @@ export default function Home() {
     });
   }, [groupMarkers, revealedGroupIds, mapLoaded]);
 
-  // CARREGAR LOCAIS POR GRUPO (com suporte a senha)
+  // ======================== BUSCAR POR GRUPO ========================
   const loadMarkersByGroup = async (groupTag: string, password?: string) => {
     const supabase = getSupabaseClient();
     let query = supabase.from("locations").select("*");
-
     if (groupTag === "public" || groupTag === "") {
       query = query.or("group_tag.is.null,group_tag.eq.public");
     } else {
       query = query.eq("group_tag", groupTag);
     }
-
     const { data, error } = await query.order("created_at", {
       ascending: false,
     });
-
     if (error) {
       console.error(error);
       alert("Erro ao carregar locais.");
-      return { publicMarkers: [], groupMarkers: [] };
+      return { groupMarkers: [] };
     }
-
-    const publicM: MarkerType[] = [];
     const groupM: MarkerType[] = [];
-
     (data || []).forEach((loc: any) => {
       const marker: MarkerType = {
         id: loc.id,
@@ -305,63 +310,121 @@ export default function Home() {
         groupTag: loc.group_tag,
         groupPasswordHash: loc.group_password_hash,
       };
-
-      if (loc.group_tag === "public" || !loc.group_tag) {
-        publicM.push(marker);
-      } else {
-        groupM.push(marker);
-      }
+      groupM.push(marker);
     });
-
-    if (
-      groupTag !== "public" &&
-      groupTag !== "" &&
-      groupM.length > 0 &&
-      groupM[0].groupPasswordHash
-    ) {
-      if (!password) {
-        alert("Este grupo requer senha.");
-        return { publicMarkers: [], groupMarkers: [] };
+    if (groupTag !== "public" && groupTag !== "") {
+      const hasAnyHash = groupM.some((m) => m.groupPasswordHash);
+      if (hasAnyHash) {
+        if (!password) {
+          alert("Este grupo requer senha.");
+          return { groupMarkers: [] };
+        }
+        const firstHash = groupM.find(
+          (m) => m.groupPasswordHash
+        )?.groupPasswordHash;
+        if (firstHash) {
+          const encoder = new TextEncoder();
+          const hashBuffer = await crypto.subtle.digest(
+            "SHA-256",
+            encoder.encode(password)
+          );
+          const hashHex = Array.from(new Uint8Array(hashBuffer))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          if (hashHex !== firstHash) {
+            alert("Senha incorreta.");
+            return { groupMarkers: [] };
+          }
+        }
       }
-      const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest(
-        "SHA-256",
-        encoder.encode(password)
-      );
-      const hashHex = Array.from(new Uint8Array(hashBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      if (hashHex !== groupM[0].groupPasswordHash) {
-        alert("Senha incorreta.");
-        return { publicMarkers: [], groupMarkers: [] };
-      }
-      return { publicMarkers: [], groupMarkers: groupM };
     }
-
-    return { publicMarkers: publicM, groupMarkers: groupM };
+    return { groupMarkers: groupM };
   };
 
-  const handleExplore = async () => {
+  // ======================== BUSCAR POR TÍTULO ========================
+  const loadMarkersByTitle = async (title: string) => {
+    if (!title.trim()) {
+      alert("Digite um título para pesquisar.");
+      return { groupMarkers: [] };
+    }
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("locations")
+      .select("*")
+      .ilike("title", `%${title.trim()}%`)
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar locais por título.");
+      return { groupMarkers: [] };
+    }
+    const resultMarkers: MarkerType[] = (data || []).map((loc: any) => ({
+      id: loc.id,
+      lng: loc.lng,
+      lat: loc.lat,
+      title: loc.title || "Local",
+      description: loc.description || "",
+      mediaType: loc.media_type === "video" ? "video" : "photo",
+      mediaUrl: loc.media_url || "",
+      address: loc.address || "",
+      createdAt: loc.created_at,
+      synced: true,
+      userId: loc.user_id,
+      userEmail: loc.user_email,
+      groupTag: loc.group_tag,
+      groupPasswordHash: loc.group_password_hash,
+    }));
+    return { groupMarkers: resultMarkers };
+  };
+
+  const handleGroupSearch = async () => {
     if (!searchGroup.trim()) {
-      alert("Digite um nome de grupo (ex: 'public', 'equipe', 'expedicao1')");
+      alert("Digite um nome de grupo (ex: 'equipe', 'expedicao1')");
       return;
     }
     setLoadingGroup(true);
     const result = await loadMarkersByGroup(searchGroup.trim(), searchPassword);
-    // Substitui os públicos atuais pelos novos (se for "public", carrega os públicos; se for outro grupo, limpa públicos)
-    setPublicMarkers(result.publicMarkers);
     setGroupMarkers(result.groupMarkers);
     setRevealedGroupIds(new Set());
+    if (result.groupMarkers.length > 0) {
+      setCurrentGroupName(`grupo: ${searchGroup.trim()}`);
+    } else {
+      setCurrentGroupName(null);
+    }
     setShowExplorer(false);
     setLoadingGroup(false);
   };
 
-  const clearExplorer = () => {
-    setPublicMarkers([]);
+  const handleTitleSearch = async () => {
+    if (!searchTitle.trim()) {
+      alert("Digite um título para pesquisar.");
+      return;
+    }
+    setLoadingGroup(true);
+    const result = await loadMarkersByTitle(searchTitle.trim());
+    setGroupMarkers(result.groupMarkers);
+    setRevealedGroupIds(new Set());
+    if (result.groupMarkers.length > 0) {
+      setCurrentGroupName(`título: ${searchTitle.trim()}`);
+    } else {
+      alert("Nenhum local encontrado com esse título.");
+      setCurrentGroupName(null);
+    }
+    setShowExplorer(false);
+    setLoadingGroup(false);
+  };
+
+  const clearGroups = () => {
     setGroupMarkers([]);
     setRevealedGroupIds(new Set());
+    setCurrentGroupName(null);
     setSearchGroup("");
     setSearchPassword("");
+    setSearchTitle("");
+  };
+
+  const togglePublicMarkers = () => {
+    setShowPublicMarkers((prev) => !prev);
   };
 
   // GEOLOCATION
@@ -431,7 +494,7 @@ export default function Home() {
     >
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* SELECT LOCATION MODE */}
+      {/* SELECT LOCATION MODE (mesmo código) */}
       {selectingLocation && (
         <>
           <div
@@ -571,7 +634,6 @@ export default function Home() {
           pointerEvents: "none",
         }}
       >
-        {/* Esquerda: botões empilhados */}
         <div
           style={{
             pointerEvents: "auto",
@@ -593,25 +655,58 @@ export default function Home() {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "rgba(0,0,0,0.45)",
+              background: currentGroupName
+                ? "rgba(16,185,129,0.15)"
+                : "rgba(0,0,0,0.45)",
               backdropFilter: "blur(20px)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: currentGroupName
+                ? "1px solid #10b981"
+                : "1px solid rgba(255,255,255,0.08)",
               borderRadius: 40,
               padding: isMobile ? "8px 12px" : "10px 16px",
               boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
               cursor: "pointer",
-              color: "#fff",
+              color: currentGroupName ? "#10b981" : "#fff",
               fontWeight: 700,
               fontSize: isMobile ? 12 : 14,
               transition: "all 0.2s",
             }}
           >
             <Globe size={16} />
-            <span>Explorar locais</span>
+            <span>
+              {currentGroupName
+                ? `Grupo: ${currentGroupName}`
+                : "Procurar grupo"}
+            </span>
           </button>
-          {(publicMarkers.length > 0 || groupMarkers.length > 0) && (
+          <button
+            onClick={togglePublicMarkers}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: showPublicMarkers
+                ? "rgba(16,185,129,0.2)"
+                : "rgba(0,0,0,0.45)",
+              backdropFilter: "blur(20px)",
+              border: showPublicMarkers
+                ? "1px solid #10b981"
+                : "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 40,
+              padding: isMobile ? "8px 12px" : "10px 16px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              cursor: "pointer",
+              color: showPublicMarkers ? "#10b981" : "#fff",
+              fontWeight: 700,
+              fontSize: isMobile ? 12 : 14,
+              transition: "all 0.2s",
+            }}
+          >
+            <span>🌍 Público</span>
+          </button>
+          {groupMarkers.length > 0 && (
             <button
-              onClick={clearExplorer}
+              onClick={clearGroups}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -628,7 +723,7 @@ export default function Home() {
               }}
             >
               <X size={14} />
-              <span>Limpar</span>
+              <span>Limpar grupos</span>
             </button>
           )}
         </div>
@@ -760,7 +855,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* MODAL DE EXPLORAÇÃO */}
+      {/* MODAL DE EXPLORAÇÃO COM DUAS BUSCAS */}
       {showExplorer && (
         <div
           style={{
@@ -786,7 +881,7 @@ export default function Home() {
               marginBottom: 20,
             }}
           >
-            <h3 style={{ margin: 0, color: "#fff" }}>Explorar locais</h3>
+            <h3 style={{ margin: 0, color: "#fff" }}>Pesquisar locais</h3>
             <button
               onClick={() => setShowExplorer(false)}
               style={{
@@ -799,73 +894,140 @@ export default function Home() {
               <X size={24} />
             </button>
           </div>
-          <input
-            type="text"
-            placeholder="Nome do grupo (ex: 'public', 'equipe', 'expedicao1')"
-            value={searchGroup}
-            onChange={(e) => setSearchGroup(e.target.value)}
+
+          {/* SEÇÃO: BUSCAR POR TÍTULO */}
+          <div style={{ marginBottom: 24 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#ccc",
+                marginBottom: 8,
+              }}
+            >
+              🔍 Buscar por nome
+            </div>
+            <input
+              type="text"
+              placeholder="Digite parte do nome (ex: 'rio', 'área')"
+              value={searchTitle}
+              onChange={(e) => setSearchTitle(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 28,
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.1)",
+                color: "#fff",
+                marginBottom: 12,
+                fontSize: 14,
+              }}
+            />
+            <button
+              onClick={handleTitleSearch}
+              disabled={loadingGroup}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: 40,
+                background: "rgba(16,185,129,0.2)",
+                border: "1px solid #10b981",
+                color: "#10b981",
+                fontWeight: "bold",
+                cursor: loadingGroup ? "wait" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              {loadingGroup ? "Carregando..." : "Buscar por nome"}
+            </button>
+          </div>
+
+          <div
             style={{
-              width: "100%",
-              padding: "12px 16px",
-              borderRadius: 28,
-              border: "1px solid rgba(255,255,255,0.2)",
+              height: 1,
               background: "rgba(255,255,255,0.1)",
-              color: "#fff",
-              marginBottom: 12,
-              fontSize: 14,
+              margin: "16px 0",
             }}
           />
-          <input
-            type="password"
-            placeholder="Senha do grupo (se necessário)"
-            value={searchPassword}
-            onChange={(e) => setSearchPassword(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              borderRadius: 28,
-              border: "1px solid rgba(255,255,255,0.2)",
-              background: "rgba(255,255,255,0.1)",
-              color: "#fff",
-              marginBottom: 20,
-              fontSize: 14,
-            }}
-          />
-          <button
-            onClick={handleExplore}
-            disabled={loadingGroup}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 40,
-              background: "linear-gradient(135deg, #3a3a3a, #0a0a0a)",
-              color: "#fff",
-              fontWeight: "bold",
-              border: "none",
-              cursor: loadingGroup ? "wait" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-            }}
-          >
-            {loadingGroup ? (
-              "Carregando..."
-            ) : (
-              <>
-                <Search size={18} /> Ir
-              </>
-            )}
-          </button>
+
+          {/* SEÇÃO: BUSCAR POR GRUPO */}
+          <div>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#ccc",
+                marginBottom: 8,
+              }}
+            >
+              👥 Buscar por grupo
+            </div>
+            <input
+              type="text"
+              placeholder="Nome do grupo (ex: 'equipe', 'expedicao1')"
+              value={searchGroup}
+              onChange={(e) => setSearchGroup(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 28,
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.1)",
+                color: "#fff",
+                marginBottom: 12,
+                fontSize: 14,
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Senha do grupo (se necessário)"
+              value={searchPassword}
+              onChange={(e) => setSearchPassword(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 28,
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.1)",
+                color: "#fff",
+                marginBottom: 20,
+                fontSize: 14,
+              }}
+            />
+            <button
+              onClick={handleGroupSearch}
+              disabled={loadingGroup}
+              style={{
+                width: "100%",
+                padding: "12px",
+                borderRadius: 40,
+                background: "linear-gradient(135deg, #3a3a3a, #0a0a0a)",
+                color: "#fff",
+                fontWeight: "bold",
+                border: "none",
+                cursor: loadingGroup ? "wait" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              {loadingGroup ? "Carregando..." : "Buscar por grupo"}
+            </button>
+          </div>
+
           <div
             style={{
               fontSize: 12,
               color: "rgba(255,255,255,0.5)",
-              marginTop: 16,
+              marginTop: 20,
               textAlign: "center",
             }}
           >
-            Digite "public" para ver locais públicos.
+            Grupos públicos já aparecem automaticamente.
           </div>
         </div>
       )}

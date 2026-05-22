@@ -144,7 +144,7 @@ export default function MarkerCard({ marker, onClose, onRemove }: Props) {
                 marginBottom: 2,
               }}
             >
-              Local marcado
+              Nome do local
             </div>
             <h2
               style={{
