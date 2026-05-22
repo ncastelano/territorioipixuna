@@ -25,8 +25,8 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
         media_type: marker.mediaType,
         group_tag: marker.groupTag === "public" ? null : marker.groupTag,
         group_password_hash: marker.groupPasswordHash || null,
-        user_id: marker.userId, // ID do usuário que criou
-        user_email: marker.userEmail, // Email do usuário que criou
+        user_id: marker.userId,
+        user_email: marker.userEmail,
       });
 
       if (error) {
@@ -98,7 +98,7 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
                 gap: 10,
               }}
             >
-              <span>● {syncedCount} salvos</span>
+              <span style={{ color: "#10b981" }}>● {syncedCount} salvos</span>
               <span style={{ color: "#ef4444" }}>
                 ● {unsyncedCount} pendentes
               </span>
@@ -224,14 +224,14 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
                     {item.description}
                   </div>
 
-                  {/* STATUS */}
+                  {/* STATUS - CORES TROCADAS */}
                   <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 6,
-                        color: "#10b981",
+                        color: "#3b82f6", // Azul para "Local"
                       }}
                     >
                       <Smartphone size={16} />
@@ -242,7 +242,7 @@ export default function LocationsDialog({ markers, onClose, onSynced }: Props) {
                         display: "flex",
                         alignItems: "center",
                         gap: 6,
-                        color: item.synced ? "#3b82f6" : "#ef4444",
+                        color: item.synced ? "#10b981" : "#ef4444", // Verde para sincronizado
                       }}
                     >
                       <Cloudy size={16} />

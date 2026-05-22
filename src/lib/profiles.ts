@@ -9,6 +9,7 @@ export type ProfileFormInput = {
   bio: string;
   region: string;
   image_url: string;
+  username?: string | null; // novo campo
 };
 
 function getAuthErrorMessage(message: string) {
@@ -17,47 +18,35 @@ function getAuthErrorMessage(message: string) {
   if (normalized.includes("email not confirmed")) {
     return "Confirme seu email antes de entrar. (Verifique sua caixa de entrada)";
   }
-
   if (normalized.includes("email rate limit exceeded")) {
     return "Muitas tentativas de envio de email. Aguarde alguns minutos e tente novamente.";
   }
-
   if (normalized.includes("for security purposes")) {
     return "Por segurança, aguarde alguns segundos antes de tentar novamente.";
   }
-
   if (normalized.includes("invalid login credentials")) {
     return "Email ou senha inválidos.";
   }
-
   if (
     normalized.includes("user already registered") ||
     normalized.includes("already registered")
   ) {
     return "Este email já está cadastrado.";
   }
-
   return message;
 }
 
 export async function getCurrentUser(): Promise<User | null> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.getUser();
-
-  if (error) {
-    return null;
-  }
-
+  if (error) return null;
   return data.user;
 }
 
 export async function signIn(email: string, password: string) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-  if (error) {
-    throw new Error(getAuthErrorMessage(error.message));
-  }
+  if (error) throw new Error(getAuthErrorMessage(error.message));
 }
 
 export async function signUp(
@@ -69,19 +58,12 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: {
-        full_name: fullName,
-      },
-    },
+    options: { data: { full_name: fullName } },
   });
 
-  if (error) {
-    throw new Error(getAuthErrorMessage(error.message));
-  }
+  if (error) throw new Error(getAuthErrorMessage(error.message));
 
-  // Com a confirmação de email desativada no Dashboard do Supabase,
-  // o `data.session` estará presente imediatamente após o cadastro.
+  // Salva o perfil automaticamente (com valores padrão)
   if (data.user && data.session) {
     await saveProfile(
       data.user.id,
@@ -89,40 +71,30 @@ export async function signUp(
         full_name: fullName,
         role: "Agente comunitário",
         bio: "",
-        region: "AM",
+        region: "AM", // será atualizado depois via geolocalização na página de perfil
         image_url: "",
+        username: null,
       },
       data.user.email ?? email
     );
   } else if (data.user && !data.session) {
-    // Caso a confirmação ainda esteja ativada (fallback), lançamos um erro orientativo.
     throw new Error(
-      "Sua conta foi criada, mas precisa ser confirmada via e-mail. Verifique sua caixa de entrada e clique no link de confirmação."
+      "Sua conta foi criada, mas precisa ser confirmada via e-mail. Verifique sua caixa de entrada."
     );
   }
-
   return data;
 }
 
 export async function resendConfirmation(email: string) {
   const supabase = getSupabaseClient();
-  const { error } = await supabase.auth.resend({
-    type: "signup",
-    email,
-  });
-
-  if (error) {
-    throw new Error(getAuthErrorMessage(error.message));
-  }
+  const { error } = await supabase.auth.resend({ type: "signup", email });
+  if (error) throw new Error(getAuthErrorMessage(error.message));
 }
 
 export async function signOut() {
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.signOut();
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 export async function fetchProfile(
@@ -134,11 +106,7 @@ export async function fetchProfile(
     .select("*")
     .eq("id", userId)
     .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
+  if (error) throw new Error(error.message);
   return data as UserProfile | null;
 }
 
@@ -154,8 +122,9 @@ export async function saveProfile(
     full_name: input.full_name.trim() || "Usuário Ipixuna",
     role: input.role.trim() || null,
     bio: input.bio.trim() || null,
-    region: input.region.trim() || null,
+    region: input.region.trim() || "AM",
     image_url: input.image_url.trim() || null,
+    username: input.username?.trim() || null, // salva username (pode ser null)
     updated_at: new Date().toISOString(),
   };
 
@@ -165,10 +134,7 @@ export async function saveProfile(
     .select()
     .single();
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
+  if (error) throw new Error(error.message);
   return data as UserProfile;
 }
 
@@ -182,15 +148,33 @@ export async function uploadProfileImage(
 
   const { error } = await supabase.storage
     .from("profile-images")
-    .upload(path, file, {
-      cacheControl: "3600",
-      upsert: true,
-    });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+    .upload(path, file, { cacheControl: "3600", upsert: true });
+  if (error) throw new Error(error.message);
 
   const { data } = supabase.storage.from("profile-images").getPublicUrl(path);
   return data.publicUrl;
+}
+
+// Função utilitária para obter estado (UF) a partir de coordenadas
+export async function getStateFromCoords(
+  lat: number,
+  lng: number
+): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${process.env.NEXT_PUBLIC_MAPBOX_TOKEN}&types=region`
+    );
+    const data = await response.json();
+    const region = data?.features?.find((f: any) =>
+      f.place_type.includes("region")
+    );
+    if (region && region.properties?.short_code) {
+      // short_code ex: "BR-AM" -> "AM"
+      return region.properties.short_code.split("-")[1];
+    }
+    return null;
+  } catch (error) {
+    console.error("Erro ao buscar estado:", error);
+    return null;
+  }
 }

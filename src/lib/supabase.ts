@@ -1,16 +1,18 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  '';
+  "";
 
 let supabaseClient: SupabaseClient | null = null;
 
 export function getSupabaseClient() {
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no .env.local.');
+    throw new Error(
+      "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no .env.local."
+    );
   }
 
   if (!supabaseClient) {
@@ -20,7 +22,13 @@ export function getSupabaseClient() {
   return supabaseClient;
 }
 
-export type ReportCategory = 'invasao' | 'ameaca' | 'desmatamento' | 'queimada' | 'recurso_natural' | 'vigilancia';
+export type ReportCategory =
+  | "invasao"
+  | "ameaca"
+  | "desmatamento"
+  | "queimada"
+  | "recurso_natural"
+  | "vigilancia";
 
 export interface MarkerReport {
   id: string;
@@ -44,6 +52,7 @@ export interface UserProfile {
   image_url: string | null;
   created_at: string;
   updated_at: string;
+  username?: string | null;
 }
 
 // SQL to run in Supabase SQL Editor:

@@ -1,3 +1,4 @@
+// app/login/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -63,32 +64,33 @@ export default function EntrarPage() {
       style={{
         minHeight: "100vh",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         background: "radial-gradient(circle at 10% 20%, #1a1a1a, #000000)",
         color: "#fff",
-        padding: "2rem 1rem",
+        padding: "1rem",
         boxSizing: "border-box",
       }}
     >
       <div
         style={{
           display: "flex",
-          flexDirection: "row",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          maxWidth: 1200,
           width: "100%",
+          maxWidth: 1200,
+          margin: "0 auto",
           gap: "2rem",
         }}
         className="login-container"
       >
-        {/* CARD DE LOGIN (ESQUERDA) */}
+        {/* CARD DE LOGIN – ocupa toda largura no mobile */}
         <div
           style={{
             width: "100%",
-            maxWidth: 460,
-            flexShrink: 0,
+            maxWidth: "100%",
           }}
         >
           <form
@@ -96,8 +98,8 @@ export default function EntrarPage() {
             style={{
               background: "rgba(0,0,0,0.6)",
               backdropFilter: "blur(24px)",
-              borderRadius: 40,
-              padding: "2rem 1.8rem",
+              borderRadius: 32,
+              padding: "1.5rem",
               border: "1px solid rgba(255,255,255,0.08)",
               boxShadow: "0 30px 50px rgba(0,0,0,0.6)",
               display: "flex",
@@ -107,7 +109,7 @@ export default function EntrarPage() {
           >
             <div style={{ textAlign: "center", marginBottom: 8 }}>
               <h2
-                style={{ fontSize: "1.8rem", fontWeight: 700, marginBottom: 4 }}
+                style={{ fontSize: "1.6rem", fontWeight: 700, marginBottom: 4 }}
               >
                 Entrar
               </h2>
@@ -172,7 +174,7 @@ export default function EntrarPage() {
           </form>
         </div>
 
-        {/* SEÇÃO DE APRESENTAÇÃO (DIREITA) - visível apenas em desktop */}
+        {/* SEÇÃO DE APRESENTAÇÃO – oculta no mobile, visível apenas em desktop */}
         <div
           className="presentation-section"
           style={{
@@ -284,7 +286,7 @@ export default function EntrarPage() {
         </div>
       </div>
 
-      {/* RODAPÉ TÉCNICO FIXO (igual ao cadastro) */}
+      {/* RODAPÉ FIXO COM ESPAÇAMENTO */}
       <div
         style={{
           position: "fixed",
@@ -294,7 +296,7 @@ export default function EntrarPage() {
           textAlign: "center",
           fontSize: "0.7rem",
           color: "rgba(255,255,255,0.35)",
-          padding: "1rem",
+          padding: "0.75rem",
           borderTop: "1px solid rgba(255,255,255,0.05)",
           background: "rgba(0,0,0,0.5)",
           backdropFilter: "blur(12px)",
@@ -326,12 +328,17 @@ export default function EntrarPage() {
             display: none;
           }
           .login-container {
-            justify-content: center;
+            padding-bottom: 80px;
           }
         }
         @media (min-width: 769px) {
           .login-container {
+            flex-direction: row;
             flex-wrap: nowrap;
+            gap: 2rem;
+          }
+          .login-container > div:first-child {
+            max-width: 460px;
           }
         }
       `}</style>
@@ -340,6 +347,7 @@ export default function EntrarPage() {
 }
 
 const inputStyle: React.CSSProperties = {
+  width: "100%",
   padding: "14px 16px",
   borderRadius: 28,
   border: "1px solid rgba(255,255,255,0.1)",
@@ -348,6 +356,7 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
   fontSize: 14,
   transition: "all 0.2s",
+  boxSizing: "border-box",
 };
 
 const buttonStyle: React.CSSProperties = {
@@ -364,4 +373,5 @@ const buttonStyle: React.CSSProperties = {
   gap: 10,
   cursor: "pointer",
   transition: "transform 0.1s ease, background 0.2s",
+  width: "100%",
 };

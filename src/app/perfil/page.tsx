@@ -11,10 +11,10 @@ import {
   saveProfile,
   signOut,
   uploadProfileImage,
+  getStateFromCoords,
   type ProfileFormInput,
 } from "@/lib/profiles";
 import type { UserProfile } from "@/lib/supabase";
-import { getSupabaseClient } from "@/lib/supabase";
 import { MarkerType } from "@/types/marker";
 import MarkerCard from "@/components/MarkerCard";
 import {
@@ -26,7 +26,7 @@ import {
   MapPin,
   Calendar,
   Navigation,
-  Cloud,
+  Globe,
 } from "lucide-react";
 
 const emptyProfile: ProfileFormInput = {
@@ -35,6 +35,7 @@ const emptyProfile: ProfileFormInput = {
   bio: "",
   region: "AM",
   image_url: "",
+  username: null,
 };
 
 function getInitials(name: string) {
@@ -61,7 +62,7 @@ export default function Perfil() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   const displayName = form.full_name.trim() || userEmail || "Usuário Ipixuna";
   const avatarUrl = form.image_url.trim();
@@ -71,47 +72,32 @@ export default function Perfil() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Função para sincronizar um marcador com o Supabase
-  const uploadToSupabase = async (marker: MarkerType) => {
-    setSyncingId(marker.id);
-    try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.from("locations").insert({
-        title: marker.title,
-        description: marker.description,
-        address: marker.address,
-        lng: marker.lng,
-        lat: marker.lat,
-        media_url: marker.mediaUrl,
-        media_type: marker.mediaType,
-        user_id: userId,
-        user_email: userEmail,
-      });
-
-      if (error) {
-        console.error(error);
-        showToast("Erro ao sincronizar local.");
-        return;
-      }
-
-      // Atualizar estado local e localStorage
-      const updatedMarkers = markers.map((m) =>
-        m.id === marker.id ? { ...m, synced: true } : m
-      );
-      setMarkers(updatedMarkers);
-      localStorage.setItem(
-        "territorio-markers",
-        JSON.stringify(updatedMarkers)
-      );
-      showToast("Local sincronizado com a nuvem!");
-    } catch (err) {
-      console.error(err);
-      showToast("Erro ao sincronizar.");
-    } finally {
-      setSyncingId(null);
+  // Função para obter localização e atualizar região
+  const detectAndSetRegion = async () => {
+    if (!navigator.geolocation) {
+      showToast("Seu navegador não suporta geolocalização.");
+      return;
     }
+    setDetectingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const state = await getStateFromCoords(latitude, longitude);
+        if (state && state !== form.region) {
+          setForm((prev) => ({ ...prev, region: state }));
+          showToast(`Região detectada: ${state}`);
+        }
+        setDetectingLocation(false);
+      },
+      (error) => {
+        console.error(error);
+        showToast("Não foi possível obter sua localização. Região mantida.");
+        setDetectingLocation(false);
+      }
+    );
   };
 
+  // Carregar perfil e marcadores
   useEffect(() => {
     async function loadData() {
       const user = await getCurrentUser();
@@ -128,6 +114,7 @@ export default function Perfil() {
         bio: currentProfile?.bio || "",
         region: currentProfile?.region || "AM",
         image_url: currentProfile?.image_url || "",
+        username: currentProfile?.username || null,
       };
 
       setUserId(user.id);
@@ -135,6 +122,7 @@ export default function Perfil() {
       setProfile(currentProfile);
       setForm(nextForm);
 
+      // Carregar marcadores do localStorage
       const stored = localStorage.getItem("territorio-markers");
       let allMarkers: MarkerType[] = [];
       if (stored) {
@@ -144,11 +132,16 @@ export default function Perfil() {
           console.error(err);
         }
       }
-
       const userMarkers = allMarkers.filter(
         (m) => m.userId === user.id || m.userEmail === user.email
       );
       setMarkers(userMarkers);
+
+      // Se a região ainda é "AM" e nunca foi detectada, tentar detectar automaticamente
+      if (nextForm.region === "AM" && currentProfile?.region === "AM") {
+        detectAndSetRegion();
+      }
+
       setStatus("ready");
     }
 
@@ -178,6 +171,7 @@ export default function Perfil() {
         bio: saved.bio || "",
         region: saved.region || "AM",
         image_url: saved.image_url || "",
+        username: saved.username || null,
       });
       showToast("Perfil salvo com sucesso.");
     } catch (error) {
@@ -304,6 +298,11 @@ export default function Perfil() {
           </div>
           <h2 style={nameStyle}>{displayName}</h2>
           <p style={roleStyle}>{form.role || "Explorador de território"}</p>
+          {form.username && (
+            <p style={{ textAlign: "center", fontSize: 12, color: "#aaa" }}>
+              @{form.username}
+            </p>
+          )}
           <p style={bioStyle}>
             {form.bio || "Compartilhe um pouco sobre sua atuação."}
           </p>
@@ -344,6 +343,16 @@ export default function Perfil() {
               style={inputStyle}
             />
           </div>
+          <div style={formGroupStyle}>
+            <label style={labelStyle}>Username (apelido)</label>
+            <input
+              value={form.username || ""}
+              onChange={(e) => handleChange("username", e.target.value)}
+              placeholder="Ex: @explorador"
+              disabled={isSaving}
+              style={inputStyle}
+            />
+          </div>
           <div style={rowStyle}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Função</label>
@@ -356,11 +365,35 @@ export default function Perfil() {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Região</label>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  justifyContent: "space-between",
+                }}
+              >
+                <label style={labelStyle}>Região</label>
+                <button
+                  type="button"
+                  onClick={detectAndSetRegion}
+                  disabled={detectingLocation}
+                  style={{
+                    background: "rgba(255,255,255,0.1)",
+                    border: "none",
+                    borderRadius: 20,
+                    padding: "4px 8px",
+                    fontSize: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  {detectingLocation ? "..." : "Detectar"}
+                </button>
+              </div>
               <input
                 value={form.region}
                 onChange={(e) => handleChange("region", e.target.value)}
-                placeholder="AM"
+                placeholder="UF (ex: AM)"
                 disabled={isSaving}
                 style={inputStyle}
               />
@@ -409,94 +442,46 @@ export default function Perfil() {
           </div>
         ) : (
           <div style={gridStyle}>
-            {markers.map((marker) => {
-              const isSynced = marker.synced === true;
-              const borderColor = isSynced ? "#3b82f6" : "#ef4444";
-
-              return (
-                <div
-                  key={marker.id}
-                  style={{
-                    ...previewCardStyle,
-                    borderBottom: `3px solid ${borderColor}`,
-                    boxShadow: `0 4px 12px ${borderColor}20`,
-                  }}
-                >
-                  <div style={mediaContainerStyle}>
-                    {marker.mediaUrl && marker.mediaType === "photo" ? (
-                      <img
-                        src={marker.mediaUrl}
-                        alt={marker.title}
-                        style={mediaStyle}
-                      />
-                    ) : marker.mediaUrl && marker.mediaType === "video" ? (
-                      <video src={marker.mediaUrl} style={mediaStyle} />
-                    ) : (
-                      <div style={placeholderStyle}>
-                        <MapPin size={28} />
-                      </div>
-                    )}
-                  </div>
-                  <div style={infoContainerStyle}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: 4,
-                      }}
-                    >
-                      <h4 style={titleStyle}>{marker.title}</h4>
-                      {isSynced ? (
-                        <Cloud size={18} color="#3b82f6" />
-                      ) : (
-                        <button
-                          onClick={() => uploadToSupabase(marker)}
-                          disabled={syncingId === marker.id}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor:
-                              syncingId === marker.id ? "wait" : "pointer",
-                            padding: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            color:
-                              syncingId === marker.id ? "#aaa" : borderColor,
-                          }}
-                          title="Sincronizar com a nuvem"
-                        >
-                          {syncingId === marker.id ? (
-                            <span style={{ fontSize: 11 }}>...</span>
-                          ) : (
-                            <Upload size={18} />
-                          )}
-                        </button>
-                      )}
+            {markers.map((marker) => (
+              <div key={marker.id} style={previewCardStyle}>
+                <div style={mediaContainerStyle}>
+                  {marker.mediaUrl && marker.mediaType === "photo" ? (
+                    <img
+                      src={marker.mediaUrl}
+                      alt={marker.title}
+                      style={mediaStyle}
+                    />
+                  ) : marker.mediaUrl && marker.mediaType === "video" ? (
+                    <video src={marker.mediaUrl} style={mediaStyle} />
+                  ) : (
+                    <div style={placeholderStyle}>
+                      <MapPin size={28} />
                     </div>
-                    <p style={addressStyle}>
-                      {marker.address || "Endereço não informado"}
-                    </p>
-                    <div style={metaStyle}>
-                      <span>
-                        <Calendar size={12} /> {formatDate(marker.createdAt)}
-                      </span>
-                      <span>
-                        <Navigation size={12} /> {marker.lat.toFixed(4)},{" "}
-                        {marker.lng.toFixed(4)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setSelectedMarker(marker)}
-                      style={detailButtonStyle}
-                    >
-                      Ver detalhes
-                    </button>
-                  </div>
+                  )}
                 </div>
-              );
-            })}
+                <div style={infoContainerStyle}>
+                  <h4 style={titleStyle}>{marker.title}</h4>
+                  <p style={addressStyle}>
+                    {marker.address || "Endereço não informado"}
+                  </p>
+                  <div style={metaStyle}>
+                    <span>
+                      <Calendar size={12} /> {formatDate(marker.createdAt)}
+                    </span>
+                    <span>
+                      <Navigation size={12} /> {marker.lat.toFixed(4)},{" "}
+                      {marker.lng.toFixed(4)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedMarker(marker)}
+                    style={detailButtonStyle}
+                  >
+                    Ver detalhes
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -571,7 +556,7 @@ export default function Perfil() {
   );
 }
 
-// ========== ESTILOS ==========
+// ========== ESTILOS (mesmos já existentes) ==========
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   display: "flex",
@@ -582,7 +567,6 @@ const pageStyle: React.CSSProperties = {
   padding: "2rem 1rem",
   boxSizing: "border-box",
 };
-
 const containerStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -591,7 +575,6 @@ const containerStyle: React.CSSProperties = {
   width: "100%",
   margin: "0 auto",
 };
-
 const cardStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.6)",
   backdropFilter: "blur(24px)",
@@ -600,14 +583,12 @@ const cardStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.08)",
   boxShadow: "0 30px 50px rgba(0,0,0,0.6)",
 };
-
 const avatarContainerStyle: React.CSSProperties = {
   position: "relative",
   width: 96,
   height: 96,
   margin: "0 auto 1rem auto",
 };
-
 const avatarImageStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
@@ -615,7 +596,6 @@ const avatarImageStyle: React.CSSProperties = {
   objectFit: "cover",
   border: "2px solid rgba(255,255,255,0.2)",
 };
-
 const initialsAvatarStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
@@ -629,7 +609,6 @@ const initialsAvatarStyle: React.CSSProperties = {
   color: "#fff",
   border: "2px solid rgba(255,255,255,0.2)",
 };
-
 const avatarEditBadgeStyle: React.CSSProperties = {
   position: "absolute",
   bottom: 0,
@@ -644,7 +623,6 @@ const avatarEditBadgeStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.2)",
   backdropFilter: "blur(4px)",
 };
-
 const nameStyle: React.CSSProperties = {
   fontSize: "1.8rem",
   fontWeight: 700,
@@ -655,21 +633,18 @@ const nameStyle: React.CSSProperties = {
   WebkitBackgroundClip: "text",
   color: "transparent",
 };
-
 const roleStyle: React.CSSProperties = {
   textAlign: "center",
   fontSize: "0.9rem",
   color: "rgba(255,255,255,0.7)",
   margin: 0,
 };
-
 const bioStyle: React.CSSProperties = {
   textAlign: "center",
   fontSize: "0.85rem",
   color: "rgba(255,255,255,0.6)",
   margin: "0.5rem 0 1rem",
 };
-
 const statsContainerStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-around",
@@ -677,25 +652,21 @@ const statsContainerStyle: React.CSSProperties = {
   paddingTop: "1rem",
   borderTop: "1px solid rgba(255,255,255,0.05)",
 };
-
 const statItemStyle: React.CSSProperties = {
   textAlign: "center",
   flex: 1,
 };
-
 const statValueStyle: React.CSSProperties = {
   display: "block",
   fontSize: "1.5rem",
   fontWeight: "bold",
   color: "#fff",
 };
-
 const statLabelStyle: React.CSSProperties = {
   fontSize: "0.7rem",
   color: "rgba(255,255,255,0.5)",
   textTransform: "uppercase",
 };
-
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: "1.2rem",
   fontWeight: 600,
@@ -703,11 +674,9 @@ const sectionTitleStyle: React.CSSProperties = {
   paddingBottom: "0.5rem",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
 };
-
 const formGroupStyle: React.CSSProperties = {
   marginBottom: "1rem",
 };
-
 const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: "0.75rem",
@@ -716,7 +685,6 @@ const labelStyle: React.CSSProperties = {
   marginBottom: "0.25rem",
   textTransform: "uppercase",
 };
-
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "12px 16px",
@@ -727,7 +695,6 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
   fontSize: 14,
 };
-
 const textareaStyle: React.CSSProperties = {
   width: "100%",
   padding: "12px 16px",
@@ -740,13 +707,11 @@ const textareaStyle: React.CSSProperties = {
   resize: "vertical",
   fontFamily: "inherit",
 };
-
 const rowStyle: React.CSSProperties = {
   display: "flex",
   gap: "1rem",
   marginBottom: "1rem",
 };
-
 const buttonStyle: React.CSSProperties = {
   marginTop: "0.5rem",
   padding: "12px 16px",
@@ -763,7 +728,6 @@ const buttonStyle: React.CSSProperties = {
   transition: "transform 0.1s ease",
   width: "100%",
 };
-
 const secondaryButtonStyle: React.CSSProperties = {
   padding: "10px 20px",
   borderRadius: 40,
@@ -778,20 +742,17 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   transition: "background 0.2s",
 };
-
 const authActionsStyle: React.CSSProperties = {
   display: "flex",
   gap: "1rem",
   justifyContent: "center",
   marginTop: "1rem",
 };
-
 const gridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
   gap: "1.5rem",
 };
-
 const previewCardStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.6)",
   backdropFilter: "blur(24px)",
@@ -800,19 +761,16 @@ const previewCardStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.08)",
   transition: "transform 0.2s",
 };
-
 const mediaContainerStyle: React.CSSProperties = {
   height: 160,
   background: "#111",
   overflow: "hidden",
 };
-
 const mediaStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "cover",
 };
-
 const placeholderStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
@@ -822,22 +780,18 @@ const placeholderStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.05)",
   color: "#888",
 };
-
 const infoContainerStyle: React.CSSProperties = {
   padding: "1rem",
 };
-
 const titleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: "1.1rem",
 };
-
 const addressStyle: React.CSSProperties = {
   fontSize: "0.75rem",
   color: "rgba(255,255,255,0.6)",
   margin: "0.25rem 0",
 };
-
 const metaStyle: React.CSSProperties = {
   display: "flex",
   gap: "0.75rem",
@@ -846,7 +800,6 @@ const metaStyle: React.CSSProperties = {
   margin: "0.5rem 0",
   flexWrap: "wrap",
 };
-
 const detailButtonStyle: React.CSSProperties = {
   width: "100%",
   marginTop: "0.5rem",
@@ -859,7 +812,6 @@ const detailButtonStyle: React.CSSProperties = {
   fontWeight: 500,
   cursor: "pointer",
 };
-
 const toastStyle: React.CSSProperties = {
   position: "fixed",
   bottom: 80,
@@ -874,7 +826,6 @@ const toastStyle: React.CSSProperties = {
   zIndex: 1000,
   whiteSpace: "nowrap",
 };
-
 const subtitleStyle: React.CSSProperties = {
   fontSize: "0.9rem",
   color: "rgba(255,255,255,0.6)",

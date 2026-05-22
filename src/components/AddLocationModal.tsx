@@ -9,10 +9,26 @@ import {
   MapPin,
   Save,
   X,
+  Mountain,
+  TreePine,
+  Waves,
+  Flame,
+  AlertTriangle,
+  Home,
 } from "lucide-react";
 import type { MarkerType } from "../types/marker";
 import { getCurrentUser } from "@/lib/profiles";
 import { getSupabaseClient } from "@/lib/supabase";
+
+// Lista de ícones disponíveis (Lucide)
+const ICON_OPTIONS = [
+  { name: "Montanha", icon: Mountain, value: "mountain" },
+  { name: "Árvore", icon: TreePine, value: "tree" },
+  { name: "Rio", icon: Waves, value: "water" },
+  { name: "Fogo", icon: Flame, value: "fire" },
+  { name: "Perigo", icon: AlertTriangle, value: "danger" },
+  { name: "Local", icon: Home, value: "home" },
+];
 
 type Props = {
   lng: number;
@@ -27,6 +43,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
   const [mediaType, setMediaType] = useState<"photo" | "video">("photo");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [videoThumbnail, setVideoThumbnail] = useState<string>("");
   const [locationName, setLocationName] = useState("Buscando localização...");
   const [loadingLocation, setLoadingLocation] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,20 +59,66 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     groupTag: string;
   } | null>(null);
   const [isPublicSelected, setIsPublicSelected] = useState(true);
+  const [selectedIcon, setSelectedIcon] = useState<string>("mountain");
+  const [creatorName, setCreatorName] = useState("");
+  const [creatorAvatar, setCreatorAvatar] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // PREVIEW
+  // Carregar dados do perfil do usuário logado
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("full_name, image_url")
+          .eq("id", user.id)
+          .single();
+        if (!error && data) {
+          setCreatorName(data.full_name || user.email || "Usuário");
+          setCreatorAvatar(data.image_url || "");
+        } else {
+          setCreatorName(user.email || "Usuário");
+        }
+      }
+    };
+    loadUserProfile();
+  }, []);
+
+  // PREVIEW e thumbnail de vídeo
   useEffect(() => {
     if (!mediaFile) {
       setPreviewUrl("");
+      setVideoThumbnail("");
       return;
     }
     const url = URL.createObjectURL(mediaFile);
     setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [mediaFile]);
+    if (mediaType === "video") {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.src = url;
+      video.onloadedmetadata = () => {
+        video.currentTime = 1;
+      };
+      video.onseeked = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas
+          .getContext("2d")
+          ?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setVideoThumbnail(canvas.toDataURL("image/jpeg"));
+        URL.revokeObjectURL(url);
+      };
+    }
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [mediaFile, mediaType]);
 
-  // REVERSE GEOCODE
+  // Reverse geocode (Mapbox)
   useEffect(() => {
     const fetchLocationName = async () => {
       try {
@@ -76,7 +139,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     fetchLocationName();
   }, [lng, lat]);
 
-  // Buscar grupos existentes (distinct)
+  // Buscar grupos existentes
   const fetchExistingGroups = async (search: string) => {
     if (!search.trim()) {
       setExistingGroups([]);
@@ -102,26 +165,20 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     setLoadingGroups(false);
   };
 
-  // Debounce para busca
+  // Debounce
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchTerm !== groupTag) {
-        fetchExistingGroups(searchTerm);
-      }
+      if (searchTerm !== groupTag) fetchExistingGroups(searchTerm);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Sincroniza o chip público com o estado do input
+  // Sincroniza chip público
   useEffect(() => {
     if (groupTag === "") {
-      if (!isPublicSelected) {
-        setIsPublicSelected(true);
-      }
+      if (!isPublicSelected) setIsPublicSelected(true);
     } else {
-      if (isPublicSelected) {
-        setIsPublicSelected(false);
-      }
+      if (isPublicSelected) setIsPublicSelected(false);
     }
   }, [groupTag]);
 
@@ -132,11 +189,8 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
     setSelectedGroupInfo(null);
     setGroupPassword("");
     setConfirmGroupPassword("");
-    if (value.trim() !== "") {
-      setIsPublicSelected(false);
-    } else {
-      setIsPublicSelected(true);
-    }
+    if (value.trim() !== "") setIsPublicSelected(false);
+    else setIsPublicSelected(true);
   };
 
   const selectPublic = () => {
@@ -190,6 +244,15 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
   };
 
   const handleSave = async () => {
+    // Validações
+    if (!title.trim()) {
+      alert("Por favor, informe o nome do local.");
+      return;
+    }
+    if (!description.trim()) {
+      alert("Por favor, adicione uma descrição.");
+      return;
+    }
     try {
       setSaving(true);
       let mediaUrl = "";
@@ -241,8 +304,8 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
         id: crypto.randomUUID(),
         lng,
         lat,
-        title: title || "Local sem nome",
-        description,
+        title: title.trim(),
+        description: description.trim(),
         mediaType,
         mediaUrl,
         address: locationName,
@@ -256,6 +319,10 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           finalGroupTag !== "public" && groupPassword
             ? groupPassword
             : undefined,
+        iconType: !mediaFile ? selectedIcon : undefined,
+        creatorName,
+        creatorAvatar,
+        videoThumbnail: videoThumbnail || undefined,
       };
 
       const existing = localStorage.getItem("territorio-markers");
@@ -264,7 +331,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
         "territorio-markers",
         JSON.stringify([...parsed, newMarker])
       );
-
       onSave(newMarker);
     } catch (err) {
       console.error(err);
@@ -346,44 +412,73 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           </button>
         </div>
 
-        {/* Localização */}
+        {/* Card de Localização redesenhado */}
         <div
           style={{
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.06)",
-            borderRadius: 24,
-            padding: 18,
+            background: "rgba(20,20,25,0.7)",
+            backdropFilter: "blur(12px)",
+            borderRadius: 28,
+            padding: 20,
             marginBottom: 18,
+            border: "1px solid rgba(255,255,255,0.06)",
           }}
         >
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
+              gap: 12,
               marginBottom: 14,
             }}
           >
-            <MapPin size={18} color="#10b981" />
-            <div style={{ color: "#fff", fontWeight: 700 }}>Localização</div>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                background: "rgba(16,185,129,0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <MapPin size={24} color="#10b981" />
+            </div>
+            <div>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>
+                Localização
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                Coordenadas geográficas
+              </div>
+            </div>
           </div>
           <div
             style={{
-              color: "rgba(255,255,255,0.7)",
-              fontSize: 14,
-              marginBottom: 10,
-              lineHeight: 1.5,
+              background: "rgba(0,0,0,0.3)",
+              borderRadius: 20,
+              padding: 12,
+              marginBottom: 12,
             }}
           >
-            {loadingLocation ? "Buscando endereço..." : locationName}
+            <div
+              style={{
+                color: "rgba(255,255,255,0.9)",
+                fontSize: 14,
+                lineHeight: 1.4,
+              }}
+            >
+              {loadingLocation ? "Buscando endereço..." : locationName}
+            </div>
           </div>
+          {/* Coordenadas sem ícone, uma abaixo da outra */}
           <div
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 6,
+              gap: 4,
+              fontSize: 12,
               color: "rgba(255,255,255,0.55)",
-              fontSize: 13,
             }}
           >
             <span>Latitude: {lat.toFixed(6)}</span>
@@ -391,7 +486,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           </div>
         </div>
 
-        {/* Título */}
+        {/* Nome do local (obrigatório) */}
         <div style={{ marginBottom: 18 }}>
           <label
             style={{
@@ -401,22 +496,37 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
               fontWeight: 600,
             }}
           >
-            Nome do local
+            Nome do local <span style={{ color: "#ef4444" }}>*</span>
           </label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Ex: nome do local"
+            placeholder="Ex: Cachoeira do Rio Negro"
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Descrição (obrigatória) */}
+        <div style={{ marginBottom: 24 }}>
+          <label
             style={{
-              width: "100%",
-              height: 56,
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(255,255,255,0.04)",
-              padding: "0 18px",
+              display: "block",
+              marginBottom: 10,
               color: "#fff",
-              outline: "none",
-              fontSize: 15,
+              fontWeight: 600,
+            }}
+          >
+            Descrição <span style={{ color: "#ef4444" }}>*</span>
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Descreva o local com detalhes..."
+            style={{
+              ...inputStyle,
+              minHeight: 100,
+              resize: "vertical",
+              fontFamily: "inherit",
             }}
           />
         </div>
@@ -463,11 +573,11 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
               style={{
                 border:
                   mediaType === "video"
-                    ? "1px solid #3b82f6"
+                    ? "1px solid #10b981"
                     : "1px solid rgba(255,255,255,0.08)",
                 background:
                   mediaType === "video"
-                    ? "rgba(59,130,246,0.14)"
+                    ? "rgba(16,185,129,0.14)"
                     : "rgba(255,255,255,0.04)",
                 borderRadius: 22,
                 padding: 18,
@@ -484,98 +594,114 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           </div>
         </div>
 
-        {/* Preview do arquivo */}
+        {/* Preview ou seleção de ícone */}
         <div style={{ marginBottom: 18 }}>
-          <label
-            style={{
-              height: 180,
-              borderRadius: 24,
-              border: "2px dashed rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.03)",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              overflow: "hidden",
-              position: "relative",
-              cursor: "pointer",
-            }}
-          >
-            {!previewUrl && (
-              <>
-                <ImageIcon size={36} color="rgba(255,255,255,0.5)" />
-                <div style={{ color: "#fff", marginTop: 12, fontWeight: 700 }}>
-                  Nenhum arquivo selecionado
-                </div>
-              </>
-            )}
-            {previewUrl && mediaType === "photo" && (
-              <img
-                src={previewUrl}
-                alt="preview"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            )}
-            {previewUrl && mediaType === "video" && (
-              <video
-                src={previewUrl}
-                controls
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={acceptType}
-              capture="environment"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setMediaFile(file);
+          {mediaFile ? (
+            <div
+              style={{
+                borderRadius: 24,
+                overflow: "hidden",
+                background: "#111",
+                position: "relative",
+                aspectRatio: "16/9",
               }}
-            />
-          </label>
+            >
+              {mediaType === "photo" ? (
+                <img
+                  src={previewUrl}
+                  alt="preview"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <video
+                  src={previewUrl}
+                  controls
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              )}
+              <button
+                onClick={() => setMediaFile(null)}
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  background: "rgba(0,0,0,0.6)",
+                  border: "none",
+                  borderRadius: 20,
+                  padding: 4,
+                  cursor: "pointer",
+                }}
+              >
+                <X size={16} color="#fff" />
+              </button>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                borderRadius: 24,
+                padding: 16,
+                border: "1px dashed rgba(255,255,255,0.12)",
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: 12,
+                  color: "rgba(255,255,255,0.6)",
+                  fontSize: 13,
+                }}
+              >
+                Nenhuma mídia selecionada. Escolha um ícone para representar o
+                local no mapa:
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  justifyContent: "center",
+                }}
+              >
+                {ICON_OPTIONS.map((opt) => {
+                  const IconComp = opt.icon;
+                  const isSelected = selectedIcon === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSelectedIcon(opt.value)}
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 24,
+                        background: isSelected
+                          ? "rgba(16,185,129,0.2)"
+                          : "rgba(255,255,255,0.05)",
+                        border: isSelected
+                          ? "1px solid #10b981"
+                          : "1px solid rgba(255,255,255,0.1)",
+                        color: isSelected ? "#10b981" : "#aaa",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        transition: "all 0.2s",
+                      }}
+                      title={opt.name}
+                    >
+                      <IconComp size={24} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Descrição */}
-        <div style={{ marginBottom: 24 }}>
-          <label
-            style={{
-              display: "block",
-              marginBottom: 10,
-              color: "#fff",
-              fontWeight: 600,
-            }}
-          >
-            Descrição
-          </label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descreva o local..."
-            style={{
-              width: "100%",
-              minHeight: 120,
-              resize: "none",
-              borderRadius: 20,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(255,255,255,0.04)",
-              padding: 18,
-              color: "#fff",
-              outline: "none",
-              fontSize: 15,
-              lineHeight: 1.5,
-            }}
-          />
-        </div>
-
-        {/* Grupo personalizado com busca e chip público */}
+        {/* Seção Grupo (completa) */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ marginBottom: 12, color: "#fff", fontWeight: 600 }}>
             Grupo (opcional)
           </div>
-          {/* Chip público */}
           <div style={{ marginBottom: 12 }}>
             <button
               type="button"
@@ -596,7 +722,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: "pointer",
-                transition: "all 0.2s",
               }}
             >
               <span>🌍</span> Público
@@ -677,8 +802,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                 </div>
               )}
           </div>
-
-          {/* Área de mensagem e campos de senha */}
           <div style={{ marginTop: 12 }}>
             {!loadingGroups &&
               existingGroups.length === 0 &&
@@ -695,7 +818,6 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
                   ✨ Nenhum grupo encontrado. Você pode criar um novo.
                 </div>
               )}
-
             {!groupTag && isPublicSelected && (
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
                 🔓 Se você não escolher um grupo, o local será público.
@@ -762,7 +884,7 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           </div>
         </div>
 
-        {/* Botões */}
+        {/* Botões finais */}
         <div style={{ display: "flex", gap: 12 }}>
           <button
             onClick={onClose}
@@ -803,6 +925,19 @@ export default function AddLocationModal({ lng, lat, onClose, onSave }: Props) {
           </button>
         </div>
         <div style={{ width: "100%", height: 100 }} />
+
+        {/* Input de arquivo oculto (obrigatório para funcionar) */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={acceptType}
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) setMediaFile(file);
+          }}
+        />
       </div>
     </div>
   );

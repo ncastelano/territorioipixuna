@@ -11,7 +11,11 @@ export type MarkerType = {
   synced?: boolean;
   userId?: string;
   userEmail?: string;
-  groupTag?: string; // nome do grupo (ex: "public", "equipe", "expedicao1")
-  groupPasswordHash?: string; // hash da senha (opcional)
-  groupPassword?: string; // senha em texto plano (apenas para uso local antes do sync)
+  groupTag?: string;
+  groupPasswordHash?: string;
+  groupPassword?: string;
+  iconType?: string; // identificador do ícone escolhido (ex: "mountain")
+  creatorName?: string; // nome do criador (full_name)
+  creatorAvatar?: string; // avatar do criador
+  videoThumbnail?: string; // thumbnail extraída do vídeo
 };
